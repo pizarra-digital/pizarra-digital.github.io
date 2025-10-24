@@ -124,6 +124,7 @@ let cssHeight = null; // altura del canvas en CSS px
 // ===== Canvas escalado HiDPI + altura dinámica =====
 function setCanvasCssHeight(h){
   canvas.style.height = h+"px"; // esto dispara el ResizeObserver
+  adjustGuestView();
 }
 function resizeInternal(){
   const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -164,7 +165,10 @@ const bgInput = $('bg');
 const readonlyToggle = $('readonly');
 const lockToggle = $('lockGuests');
 const myCodeEl = $('myCode');
+const codeInput = $('code');
 const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput, clearBtn, addSpaceBtn];
+const headerEl = document.querySelector('header');
+let canvasScale = 1;
 
 function clamp(value, min, max){
   const n = Number.isFinite(value) ? value : min;
@@ -221,6 +225,43 @@ function refreshUi(){
   if(!isHost && conn && conn.open){
     setStatus(remoteLock ? 'Bloqueado por anfitrión' : 'conectado');
   }
+  adjustGuestView();
+}
+
+function adjustGuestView(){
+  if(isHost){
+    canvasScale = 1;
+    canvas.style.transform = '';
+    canvas.style.transformOrigin = '';
+    board.style.height = '';
+    board.style.overflow = 'auto';
+    document.body.style.overflow = '';
+    return;
+  }
+  canvas.style.transform = '';
+  canvas.style.transformOrigin = '';
+  const headerHeight = headerEl ? headerEl.offsetHeight : 0;
+  const availableHeight = Math.max(200, window.innerHeight - headerHeight);
+  const availableWidth = window.innerWidth;
+  const targetHeight = cssHeight || canvas.offsetHeight || availableHeight;
+  const targetWidth = canvas.offsetWidth || availableWidth;
+  let scale = 1;
+  if(targetHeight > 0) scale = Math.min(scale, availableHeight / targetHeight);
+  if(targetWidth > 0) scale = Math.min(scale, availableWidth / targetWidth);
+  if(!Number.isFinite(scale) || scale <= 0) scale = 1;
+  canvasScale = scale;
+  if(scale < 1){
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.transformOrigin = 'top left';
+    board.style.height = `${availableHeight}px`;
+    board.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+  } else {
+    canvas.style.transform = '';
+    board.style.height = '';
+    board.style.overflow = 'auto';
+    document.body.style.overflow = '';
+  }
 }
 
 // ===== Dibujo local y sincronización =====
@@ -232,7 +273,15 @@ function drawLine(x0,y0,x1,y1,color,size,mode){
   ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke(); ctx.restore();
 }
 // Puntero/Toque
-function pointerXY(e){ const rect = canvas.getBoundingClientRect(); const x = (e.clientX ?? e.touches[0].clientX) - rect.left; const y = (e.clientY ?? e.touches[0].clientY) - rect.top; return {x,y}; }
+function pointerXY(e){
+  const rect = canvas.getBoundingClientRect();
+  const scale = canvasScale || 1;
+  const clientX = (e.clientX ?? e.touches?.[0]?.clientX ?? 0);
+  const clientY = (e.clientY ?? e.touches?.[0]?.clientY ?? 0);
+  const x = (clientX - rect.left) / scale;
+  const y = (clientY - rect.top) / scale;
+  return {x,y};
+}
 function down(e){
   if(drawingLocked()) return;
   drawing = true; last = pointerXY(e);
@@ -349,6 +398,7 @@ lockToggle?.addEventListener('change', ()=>{
 refreshUi();
 if(sizeInput) sizeInput.value = String(getPenSize());
 if(eraserSizeInput) eraserSizeInput.value = String(getEraserSize());
+window.addEventListener('resize', ()=> adjustGuestView());
 
 function canvasSnapshot(){
   const off = document.createElement('canvas');
@@ -530,7 +580,7 @@ function updateStatusForGuests(){
   setStatus(`conectados: ${guests.size}`);
 }
 
-$('hostBtn').onclick = ()=>{
+function startHost(){
   cleanupPeer();
   const id = rndCode();
   isHost = true;
@@ -567,23 +617,23 @@ $('hostBtn').onclick = ()=>{
     setStatus('error de conexión');
     refreshUi();
   });
-};
+}
 
-$('joinBtn').onclick = ()=>{
-  const id = $('code').value.trim().toUpperCase();
-  if(!id){
-    alert('Introduce un código válido.');
+function startGuest(code, { silent=false } = {}){
+  const target = (code ?? codeInput?.value ?? '').trim().toUpperCase();
+  if(!target){
+    if(!silent) alert('Introduce un código válido.');
     return;
   }
   cleanupPeer();
   isHost = false;
   guestLock = false;
   remoteLock = false;
-  peer = new Peer(null, peerConfig);
   refreshUi();
+  peer = new Peer(null, peerConfig);
   setStatus('conectando…');
   peer.on('open', ()=>{
-    conn = peer.connect(id, { reliable:true });
+    conn = peer.connect(target, { reliable:true });
     refreshUi();
     conn.on('open', ()=>{
       setStatus('conectado');
@@ -600,14 +650,19 @@ $('joinBtn').onclick = ()=>{
       console.error(err);
       setStatus('error de conexión');
       refreshUi();
+      if(!silent) alert('Error en la conexión con el anfitrión.');
     });
   });
   peer.on('error', e=>{
     console.error(e);
     setStatus('error de conexión');
     refreshUi();
+    if(!silent) alert('No se pudo crear la conexión.');
   });
-};
+}
+
+$('hostBtn').onclick = startHost;
+$('joinBtn').onclick = ()=> startGuest();
 
 function emitStroke(s){
   if(isHost){
@@ -619,7 +674,8 @@ function emitStroke(s){
 
 const codeParam = (()=>{ try{ return new URL(window.location.href).searchParams.get('code'); }catch(e){ return null; }})();
 if(codeParam){
-  $('code').value = codeParam.toUpperCase();
+  if(codeInput) codeInput.value = codeParam.toUpperCase();
+  window.addEventListener('load', ()=> startGuest(codeParam, { silent:true }));
 }
 </script>
 </body>
