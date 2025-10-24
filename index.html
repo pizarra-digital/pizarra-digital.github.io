@@ -567,7 +567,7 @@ function refreshUi(){
   if(!isHost){
     if(conn && conn.open){
       const locked = remoteLock;
-      setStatus(locked ? 'Sin edición' : 'conectado', locked ? 'locked' : 'connected');
+      setStatus(locked ? 'Sin edición' : 'conectado', 'connected');
     } else {
       setStatus('sin conexión', 'disconnected');
     }
