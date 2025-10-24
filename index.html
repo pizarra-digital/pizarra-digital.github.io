@@ -58,6 +58,23 @@
     .hidden { display:none !important; }
     .board { height: 100%; overflow:auto; background:#0b1220; }
     #canvas { width:100%; display:block; background:#0b1220; touch-action: none; cursor: crosshair; }
+    #canvas.erase-mode { cursor:none; }
+    #eraserCursor {
+      position:fixed;
+      left:-1000px;
+      top:-1000px;
+      width:20px;
+      height:20px;
+      border:2px solid rgba(255,255,255,.8);
+      border-radius:50%;
+      pointer-events:none;
+      mix-blend-mode:difference;
+      z-index:200;
+      transition:width .08s ease, height .08s ease, border-color .08s ease;
+      opacity:0;
+      transform:translate(-50%, -50%);
+    }
+    #canvas.erase-mode + #eraserCursor { opacity:1; }
     .sep { width:1px; height:28px; background:var(--border); margin:0 .25rem; display:inline-block; }
     .chip { font-variant-numeric: tabular-nums; color:#a7f3d0; border-color:#065f46; }
     .pill { border-radius:999px; padding:.25rem .6rem; border:1px solid #065f46; background:#042f2e; }
@@ -111,6 +128,7 @@
     </header>
     <div class="board" id="board">
       <canvas id="canvas" style="height: calc(100vh - 56px);"></canvas>
+      <div id="eraserCursor" aria-hidden="true"></div>
     </div>
   </div>
 
@@ -181,6 +199,7 @@ function applyCanvasWidth(){
     canvas.style.removeProperty('max-width');
   }
   syncCanvasResolution({preserve:true});
+  if(erasing) updateEraserCursorSize();
 }
 
 function syncCanvasResolution({preserve=true} = {}){
@@ -276,6 +295,7 @@ let manualMenuState = null;
 const hostOnlyEls = Array.from(document.querySelectorAll('.host-only'));
 const editControlEls = Array.from(document.querySelectorAll('.edit-only'));
 const roleLabel = $('roleLabel');
+const eraserCursorEl = $('eraserCursor');
 const sectionButtons = Array.from(document.querySelectorAll('.toolbar-nav .tab-btn[data-target]'));
 const toolbarSections = Array.from(document.querySelectorAll('.toolbar-section'));
 const sectionsMap = new Map(toolbarSections.map(sec=> [sec.dataset.section, sec]));
@@ -361,6 +381,51 @@ function getEraserSize(){
   return clamp(Number.isFinite(raw) ? raw : 20, 1, 100);
 }
 
+function pointerClientPosition(e){
+  if(!e) return null;
+  const source = e.touches?.[0] || e.changedTouches?.[0] || e;
+  const x = source?.clientX;
+  const y = source?.clientY;
+  if(Number.isFinite(x) && Number.isFinite(y)) return {x, y};
+  return null;
+}
+
+function hideEraserCursor(){
+  if(!eraserCursorEl) return;
+  eraserCursorEl.style.left = '-1000px';
+  eraserCursorEl.style.top = '-1000px';
+}
+
+function updateEraserCursorSize(){
+  if(!eraserCursorEl || !erasing) return;
+  const scale = canvasScale || 1;
+  const diameter = Math.max(6, getEraserSize() * scale);
+  eraserCursorEl.style.width = `${diameter}px`;
+  eraserCursorEl.style.height = `${diameter}px`;
+  const border = Math.max(1, Math.min(4, Math.round(diameter * 0.15)));
+  eraserCursorEl.style.borderWidth = `${border}px`;
+}
+
+function updateEraserCursorFromEvent(e){
+  if(!eraserCursorEl){
+    return;
+  }
+  if(!erasing){
+    hideEraserCursor();
+    if(canvas) canvas.classList.remove('erase-mode');
+    return;
+  }
+  const pos = pointerClientPosition(e);
+  if(!pos){
+    hideEraserCursor();
+    return;
+  }
+  updateEraserCursorSize();
+  if(canvas) canvas.classList.add('erase-mode');
+  eraserCursorEl.style.left = `${pos.x}px`;
+  eraserCursorEl.style.top = `${pos.y}px`;
+}
+
 function drawingLocked(){
   if(readonlyToggle?.checked) return true;
   if(!isHost && remoteLock) return true;
@@ -369,6 +434,19 @@ function drawingLocked(){
 
 function updateEraserLabel(){
   if(eraserBtn) eraserBtn.textContent = erasing ? 'Borrador (on)' : 'Borrador';
+  if(canvas) canvas.classList.toggle('erase-mode', erasing);
+  if(erasing) updateEraserCursorSize();
+  else hideEraserCursor();
+}
+
+function setEraserMode(active){
+  const desired = !!active;
+  if(desired === erasing){
+    updateEraserLabel();
+    return;
+  }
+  erasing = desired;
+  updateEraserLabel();
 }
 
 function updateLockToggle(){
@@ -383,7 +461,10 @@ function updateGuestControls(){
   guestControls.forEach(el=>{
     if(el) el.disabled = disable;
   });
-  if(disable) drawing = false;
+  if(disable){
+    drawing = false;
+    if(erasing) setEraserMode(false);
+  }
 }
 
 function updateBackgroundInput(){
@@ -500,6 +581,7 @@ function adjustGuestView(){
     board.style.overflow = 'auto';
     document.body.style.overflow = '';
   }
+  if(erasing) updateEraserCursorSize();
 }
 
 // ===== Dibujo local y sincronización =====
@@ -532,12 +614,17 @@ function pointerXY(e){
   return {x,y};
 }
 function down(e){
+  updateEraserCursorFromEvent(e);
   if(drawingLocked()) return;
+  if(canvas?.setPointerCapture && e?.pointerId !== undefined){
+    try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+  }
   drawing = true;
   lastPoint = pointerXY(e);
   lastMidpoint = lastPoint;
 }
 function move(e){
+  updateEraserCursorFromEvent(e);
   if(!drawing) return;
   if(!isHost && remoteLock){ drawing = false; return; }
   const p = pointerXY(e);
@@ -566,6 +653,7 @@ function move(e){
 }
 
 function up(e){
+  updateEraserCursorFromEvent(e);
   if(!drawing) return;
   const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
   const size = erasing ? getEraserSize() : getPenSize();
@@ -588,6 +676,21 @@ function up(e){
   drawing=false;
   lastPoint=null;
   lastMidpoint=null;
+  if(canvas?.releasePointerCapture && e?.pointerId !== undefined){
+    try{ canvas.releasePointerCapture(e.pointerId); }catch(err){}
+  }
+  if(e?.type === 'pointerleave'){
+    hideEraserCursor();
+  }
+}
+
+function handlePointerLeave(e){
+  hideEraserCursor();
+  if(drawing){
+    up(e);
+  } else if(canvas){
+    canvas.classList.toggle('erase-mode', erasing);
+  }
 }
 
 function clearCanvas(){
@@ -598,13 +701,18 @@ function clearCanvas(){
 }
 
 canvas.addEventListener('pointerdown', down);
+canvas.addEventListener('pointerenter', updateEraserCursorFromEvent);
 canvas.addEventListener('pointermove', move);
 canvas.addEventListener('pointerup', up);
-canvas.addEventListener('pointerleave', up);
+canvas.addEventListener('pointerleave', handlePointerLeave);
+canvas.addEventListener('pointercancel', handlePointerLeave);
 canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
 
 sizeInput?.addEventListener('change', ()=>{ sizeInput.value = String(getPenSize()); });
-eraserSizeInput?.addEventListener('change', ()=>{ eraserSizeInput.value = String(getEraserSize()); });
+eraserSizeInput?.addEventListener('change', ()=>{ 
+  eraserSizeInput.value = String(getEraserSize());
+  updateEraserCursorSize();
+});
 
 const qrOverlay = document.getElementById('qrOverlay');
 const qrClose = document.getElementById('qrClose');
@@ -643,8 +751,7 @@ document.addEventListener('keydown', e=>{ if(e.key === 'Escape') hideQr(); });
 updateEraserLabel();
 
 eraserBtn?.addEventListener('click', ()=>{
-  erasing = !erasing;
-  updateEraserLabel();
+  setEraserMode(!erasing);
 });
 
 function emitBg(color){
@@ -845,6 +952,7 @@ function cleanupPeer(){
   isHost = false;
   guestLock = false;
   remoteLock = false;
+  setEraserMode(false);
   cssWidth = null;
   lastViewportHeight = null;
   lastViewportWidth = null;
