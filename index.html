@@ -112,8 +112,8 @@ let isHost = false;
 let drawing = false;
 let last = null;          // último punto
 let erasing = false;
-let guestLock = false;    // estado del anfitrión respecto a invitados
-let remoteLock = false;   // estado recibido por invitados
+let guestLock = false;    // bloqueo impuesto por el anfitrión
+let remoteLock = false;   // bloqueo recibido cuando eres invitado
 const statusEl = document.getElementById('status');
 
 const board = document.getElementById('board');
@@ -153,7 +153,6 @@ function growCanvas(extra=800){
 const $ = (id)=>document.getElementById(id);
 function rndCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
 function setStatus(t){ statusEl.textContent = t; }
-
 const colorInput = $('color');
 const sizeInput = $('size');
 const eraserSizeInput = $('eraserSize');
@@ -166,7 +165,6 @@ const readonlyToggle = $('readonly');
 const lockToggle = $('lockGuests');
 const myCodeEl = $('myCode');
 const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput, clearBtn, addSpaceBtn];
-let currentBg = bgInput?.value || '#0b1220';
 
 function clamp(value, min, max){
   const n = Number.isFinite(value) ? value : min;
@@ -183,7 +181,7 @@ function getEraserSize(){
   return clamp(Number.isFinite(raw) ? raw : 20, 1, 100);
 }
 
-function drawingDisabled(){
+function drawingLocked(){
   if(readonlyToggle?.checked) return true;
   if(!isHost && remoteLock) return true;
   return false;
@@ -193,38 +191,32 @@ function updateEraserLabel(){
   if(eraserBtn) eraserBtn.textContent = erasing ? 'Borrador (on)' : 'Borrador';
 }
 
-function updateLockUi(){
+function updateLockToggle(){
   if(!lockToggle) return;
   lockToggle.disabled = !isHost;
   lockToggle.checked = isHost ? guestLock : remoteLock;
-  lockToggle.title = isHost ? 'Impide que los invitados dibujen o borren' : 'Solo el anfitrión puede cambiar esta opción';
+  lockToggle.title = isHost ? 'Impide que los invitados dibujen o borren la pizarra' : 'Solo el anfitrión puede cambiar esta opción';
 }
 
 function updateGuestControls(){
-  const locked = !isHost && remoteLock;
+  const disable = !isHost && remoteLock;
   guestControls.forEach(el=>{
-    if(el){
-      el.disabled = locked;
-    }
+    if(el) el.disabled = disable;
   });
-  if(locked){
-    drawing = false;
-  }
+  if(disable) drawing = false;
 }
 
-function updateBackgroundUi(){
+function updateBackgroundInput(){
   if(!bgInput) return;
   const disable = !isHost && !!(conn && conn.open);
   bgInput.disabled = disable;
-  if(disable){
-    bgInput.value = currentBg;
-  }
+  if(disable) bgInput.value = currentBg;
 }
 
-function updateUi(){
-  updateLockUi();
+function refreshUi(){
+  updateLockToggle();
   updateGuestControls();
-  updateBackgroundUi();
+  updateBackgroundInput();
   updateEraserLabel();
   if(!isHost && conn && conn.open){
     setStatus(remoteLock ? 'Bloqueado por anfitrión' : 'conectado');
@@ -242,16 +234,12 @@ function drawLine(x0,y0,x1,y1,color,size,mode){
 // Puntero/Toque
 function pointerXY(e){ const rect = canvas.getBoundingClientRect(); const x = (e.clientX ?? e.touches[0].clientX) - rect.left; const y = (e.clientY ?? e.touches[0].clientY) - rect.top; return {x,y}; }
 function down(e){
-  if(drawingDisabled()) return;
-  drawing = true;
-  last = pointerXY(e);
+  if(drawingLocked()) return;
+  drawing = true; last = pointerXY(e);
 }
 function move(e){
   if(!drawing) return;
-  if(!isHost && remoteLock){
-    drawing = false;
-    return;
-  }
+  if(!isHost && remoteLock){ drawing = false; return; }
   const p = pointerXY(e);
   if(isHost){
     const edge = canvas.getBoundingClientRect().height - 150;
@@ -292,6 +280,7 @@ const qrCodeText = document.getElementById('qrCodeText');
 const qrBtn = document.getElementById('qrBtn');
 let qrInstance = null;
 let shareUrl = '';
+let currentBg = bgInput?.value || '#0b1220';
 
 function ensureQr(){
   if(!qrInstance){
@@ -335,7 +324,6 @@ function applyBackground(color, propagate=true){
   canvas.style.background = color;
   board.style.background = color;
   if(bgInput) bgInput.value = color;
-  updateBackgroundUi();
   if(propagate) emitBg(color);
 }
 
@@ -354,13 +342,13 @@ lockToggle?.addEventListener('change', ()=>{
     return;
   }
   guestLock = lockToggle.checked;
-  updateUi();
+  refreshUi();
   broadcast({type:'lock', value: guestLock});
 });
 
-updateUi();
-if(sizeInput){ sizeInput.value = String(getPenSize()); }
-if(eraserSizeInput){ eraserSizeInput.value = String(getEraserSize()); }
+refreshUi();
+if(sizeInput) sizeInput.value = String(getPenSize());
+if(eraserSizeInput) eraserSizeInput.value = String(getEraserSize());
 
 function canvasSnapshot(){
   const off = document.createElement('canvas');
@@ -422,14 +410,9 @@ function handleIncoming(msg, source){
       break;
     case 'bg':
       if(typeof msg.color === 'string'){
-        if(isHost){
-          if(source){
-            try{ source.send({type:'bg', color: currentBg}); }catch(e){}
-          }
-        } else {
-          applyBackground(msg.color, false);
-        }
+        applyBackground(msg.color, false);
       }
+      if(isHost) broadcast(msg, source?.peer);
       break;
     case 'lock':
       if(typeof msg.value === 'boolean'){
@@ -439,7 +422,7 @@ function handleIncoming(msg, source){
           }
         } else {
           remoteLock = msg.value;
-          updateUi();
+          refreshUi();
         }
       }
       break;
@@ -448,7 +431,7 @@ function handleIncoming(msg, source){
         if(msg.bg) applyBackground(msg.bg, false);
         if(typeof msg.lock === 'boolean'){
           remoteLock = msg.lock;
-          updateUi();
+          refreshUi();
         }
         if(typeof msg.h === 'number'){
           cssHeight = msg.h;
@@ -526,7 +509,7 @@ function cleanupPeer(){
   isHost = false;
   guestLock = false;
   remoteLock = false;
-  updateUi();
+  refreshUi();
   if(myCodeEl){
     myCodeEl.style.display = 'none';
     myCodeEl.textContent = '';
@@ -553,7 +536,7 @@ $('hostBtn').onclick = ()=>{
   isHost = true;
   guestLock = false;
   remoteLock = false;
-  updateUi();
+  refreshUi();
   peer = new Peer(id, peerConfig);
   setStatus('creando sesión…');
   peer.on('open', ()=>{
@@ -572,19 +555,17 @@ $('hostBtn').onclick = ()=>{
       updateStatusForGuests();
     });
     c.on('data', msg=> handleIncoming(msg, c));
-    c.on('open', ()=>{
-      sendStateTo(c);
-      try{ c.send({type:'hello'}); }catch(e){}
-    });
+    sendStateTo(c);
+    try{ c.send({type:'hello'}); }catch(e){}
   });
   peer.on('disconnected', ()=>{
     setStatus('desconectado');
-    updateUi();
+    refreshUi();
   });
   peer.on('error', e=>{
     console.error(e);
     setStatus('error de conexión');
-    updateUi();
+    refreshUi();
   });
 };
 
@@ -599,38 +580,41 @@ $('joinBtn').onclick = ()=>{
   guestLock = false;
   remoteLock = false;
   peer = new Peer(null, peerConfig);
-  updateUi();
+  refreshUi();
   setStatus('conectando…');
   peer.on('open', ()=>{
     conn = peer.connect(id, { reliable:true });
-    updateUi();
+    refreshUi();
     conn.on('open', ()=>{
       setStatus('conectado');
-      updateUi();
+      refreshUi();
       try{ conn.send({type:'request-state'}); }catch(e){}
     });
     conn.on('data', msg=> handleIncoming(msg, conn));
     conn.on('close', ()=>{
       setStatus('cerrado');
       conn = null;
-      updateUi();
+      refreshUi();
     });
     conn.on('error', err=>{
       console.error(err);
       setStatus('error de conexión');
-      updateUi();
+      refreshUi();
     });
   });
   peer.on('error', e=>{
     console.error(e);
     setStatus('error de conexión');
-    updateUi();
+    refreshUi();
   });
 };
 
 function emitStroke(s){
-  if(isHost){ broadcast({type:'stroke', s}); }
-  else if(conn && conn.open && !remoteLock){ conn.send({type:'stroke', s}); }
+  if(isHost){
+    broadcast({type:'stroke', s});
+  } else if(conn && conn.open && !remoteLock){
+    conn.send({type:'stroke', s});
+  }
 }
 
 const codeParam = (()=>{ try{ return new URL(window.location.href).searchParams.get('code'); }catch(e){ return null; }})();
