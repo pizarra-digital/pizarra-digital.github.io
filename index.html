@@ -111,7 +111,7 @@
           <button id="qrBtn" class="btn host-only" title="Mostrar QR de conexión">QR</button>
         </div>
         <div id="section-draw" class="toolbar-section" data-section="draw" role="tabpanel" aria-label="Herramientas de dibujo">
-          <label class="edit-only">Color <input id="color" type="color" value="#16a34a" /></label>
+          <label class="edit-only">Color <input id="color" type="color" value="#000000" /></label>
           <label class="edit-only">Grosor <input id="size" type="number" min="1" max="50" value="4" style="width:4.5rem"/></label>
           <label class="edit-only">Grosor borrador <input id="eraserSize" type="number" min="1" max="100" value="20" style="width:4.5rem"/></label>
           <button id="eraser" class="btn edit-only">Borrador</button>
@@ -643,7 +643,7 @@ function move(e){
   if(!drawing) return;
   if(!isHost && remoteLock){ drawing = false; return; }
   const p = pointerXY(e);
-  const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
+  const color = erasing ? '#000000' : (colorInput?.value || '#000000');
   const size = erasing ? getEraserSize() : getPenSize();
   const mid = {
     x: (lastPoint.x + p.x) / 2,
@@ -670,7 +670,7 @@ function move(e){
 function up(e){
   updateEraserCursorFromEvent(e);
   if(!drawing) return;
-  const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
+  const color = erasing ? '#000000' : (colorInput?.value || '#000000');
   const size = erasing ? getEraserSize() : getPenSize();
   const endPoint = e ? pointerXY(e) : lastPoint;
   if(lastPoint && lastMidpoint && endPoint){
