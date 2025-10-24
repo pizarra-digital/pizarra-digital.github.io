@@ -17,7 +17,8 @@
     body { margin:0; background: var(--bg); color: var(--txt); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
     .wrap { display:grid; grid-template-rows: auto 1fr; height: 100dvh; }
     header { display:flex; gap:.5rem; align-items:center; padding:.5rem; flex-wrap:wrap; background: linear-gradient(180deg, rgba(17,24,39,.95), rgba(17,24,39,.6)); backdrop-filter: blur(6px); position: sticky; top:0; z-index:10; }
-    header>* { border:1px solid var(--border); background:#0b1220; color:var(--txt); padding:.45rem .6rem; border-radius:.55rem; font-size:14px; line-height:1; }
+    header .toolbar-controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; flex:1 1 auto; }
+    header .toolbar-controls > *, #menuToggle { border:1px solid var(--border); background:#0b1220; color:var(--txt); padding:.45rem .6rem; border-radius:.55rem; font-size:14px; line-height:1; }
     header label { display:flex; align-items:center; gap:.4rem; }
     header input[type="text"], header input[type="number"] { background:#0b1220; color:var(--txt); border:1px solid var(--border); padding:.35rem .5rem; height:28px; }
     header input::placeholder { color:#cbd5e1; opacity:.8; }
@@ -25,6 +26,16 @@
     header .btn { cursor:pointer; user-select:none; }
     header .btn[disabled] { opacity:.5; cursor:not-allowed; }
     #status { margin-left:auto; border:none; background:transparent; color:var(--muted); padding:0; }
+    header[data-collapsed="true"] .toolbar-controls { display:none; }
+    header[data-collapsed="true"] #status { margin-left:0; }
+    #menuToggle { display:none; }
+    @media (max-width: 900px){
+      header { flex-direction:column; align-items:stretch; }
+      header .toolbar-controls { width:100%; }
+      header[data-collapsed="false"] .toolbar-controls { display:flex; }
+      #menuToggle { display:inline-flex; justify-content:center; align-items:center; gap:.35rem; }
+      #status { align-self:flex-end; }
+    }
     .board { height: 100%; overflow:auto; background:#0b1220; }
     #canvas { width:100%; display:block; background:#0b1220; touch-action: none; cursor: crosshair; }
     .sep { width:1px; height:28px; background:var(--border); margin:0 .25rem; }
@@ -46,27 +57,30 @@
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <strong>Modo:</strong>
-      <button id="hostBtn" class="btn">Anfitrión</button>
-      <span class="sep"></span>
-      <label>Código <input id="code" type="text" placeholder="ABC123" style="width:7rem;text-transform:uppercase"/></label>
-      <button id="joinBtn" class="btn">Unirse</button>
-      <span id="myCode" class="pill chip" title="Código de la sesión" style="display:none"></span>
-      <button id="qrBtn" class="btn" title="Mostrar QR de conexión">QR</button>
-      <span class="sep"></span>
-      <label>Color <input id="color" type="color" value="#16a34a" /></label>
-      <label>Grosor <input id="size" type="number" min="1" max="50" value="4" style="width:4.5rem"/></label>
-      <label>Grosor borrador <input id="eraserSize" type="number" min="1" max="100" value="20" style="width:4.5rem"/></label>
-      <button id="eraser" class="btn">Borrador</button>
-      <button id="clear" class="btn">Limpiar</button>
-      <span class="sep"></span>
-      <label>Fondo <input id="bg" type="color" value="#0b1220" /></label>
-      <button id="addSpace" class="btn" title="Añadir espacio vertical">+ espacio</button>
-      <button id="savePdf" class="btn" title="Guardar como PDF">Guardar PDF</button>
-      <span class="sep"></span>
-      <label><input id="readonly" type="checkbox"/> Solo proyectar</label>
-      <label><input id="lockGuests" type="checkbox"/> Solo anfitrión dibuja</label>
+    <header data-collapsed="false">
+      <button id="menuToggle" class="btn menu-toggle" type="button" aria-expanded="true" aria-controls="toolbarControls">Ocultar menú</button>
+      <div id="toolbarControls" class="toolbar-controls">
+        <strong>Modo:</strong>
+        <button id="hostBtn" class="btn">Anfitrión</button>
+        <span class="sep"></span>
+        <label>Código <input id="code" type="text" placeholder="ABC123" style="width:7rem;text-transform:uppercase"/></label>
+        <button id="joinBtn" class="btn">Unirse</button>
+        <span id="myCode" class="pill chip" title="Código de la sesión" style="display:none"></span>
+        <button id="qrBtn" class="btn" title="Mostrar QR de conexión">QR</button>
+        <span class="sep"></span>
+        <label>Color <input id="color" type="color" value="#16a34a" /></label>
+        <label>Grosor <input id="size" type="number" min="1" max="50" value="4" style="width:4.5rem"/></label>
+        <label>Grosor borrador <input id="eraserSize" type="number" min="1" max="100" value="20" style="width:4.5rem"/></label>
+        <button id="eraser" class="btn">Borrador</button>
+        <button id="clear" class="btn">Limpiar</button>
+        <span class="sep"></span>
+        <label>Fondo <input id="bg" type="color" value="#0b1220" /></label>
+        <button id="addSpace" class="btn" title="Añadir espacio vertical">+ espacio</button>
+        <button id="savePdf" class="btn" title="Guardar como PDF">Guardar PDF</button>
+        <span class="sep"></span>
+        <label><input id="readonly" type="checkbox"/> Solo proyectar</label>
+        <label><input id="lockGuests" type="checkbox"/> Solo anfitrión dibuja</label>
+      </div>
       <span id="status">sin conexión</span>
     </header>
     <div class="board" id="board">
@@ -126,6 +140,32 @@ function setCanvasCssHeight(h){
   canvas.style.height = h+"px"; // esto dispara el ResizeObserver
   adjustGuestView();
 }
+
+function headerHeight(){
+  return headerEl ? headerEl.offsetHeight : 56;
+}
+
+function desiredCanvasHeight(){
+  const value = Math.round(window.innerHeight - headerHeight());
+  return Math.max(200, value);
+}
+
+function expandCanvasToViewport(force=false){
+  const target = desiredCanvasHeight();
+  if(cssHeight === null || force){
+    cssHeight = target;
+    setCanvasCssHeight(cssHeight);
+    return;
+  }
+  const connected = !!(conn && conn.open);
+  if(isHost || !connected){
+    if(target > cssHeight){
+      cssHeight = target;
+      setCanvasCssHeight(cssHeight);
+    }
+  }
+}
+
 function resizeInternal(){
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const w = canvas.clientWidth;
@@ -140,8 +180,8 @@ function resizeInternal(){
 const ro = new ResizeObserver(()=> resizeInternal());
 ro.observe(canvas);
 window.addEventListener('load', ()=>{
-  cssHeight = Math.round(window.innerHeight - 56);
-  setCanvasCssHeight(cssHeight);
+  expandCanvasToViewport(true);
+  applyMenuState();
 });
 
 function growCanvas(extra=800){
@@ -169,6 +209,10 @@ const codeInput = $('code');
 const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput, clearBtn, addSpaceBtn];
 const headerEl = document.querySelector('header');
 let canvasScale = 1;
+const menuToggleBtn = $('menuToggle');
+const toolbarControls = $('toolbarControls');
+const menuQuery = window.matchMedia('(max-width: 900px)');
+let manualMenuState = null;
 
 function clamp(value, min, max){
   const n = Number.isFinite(value) ? value : min;
@@ -217,6 +261,49 @@ function updateBackgroundInput(){
   if(disable) bgInput.value = currentBg;
 }
 
+function currentMenuCollapsed(){
+  if(manualMenuState !== null) return manualMenuState;
+  return menuQuery.matches;
+}
+
+function applyMenuState(){
+  const collapsed = currentMenuCollapsed();
+  if(headerEl) headerEl.dataset.collapsed = collapsed ? 'true' : 'false';
+  if(menuToggleBtn){
+    menuToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    menuToggleBtn.setAttribute('aria-label', collapsed ? 'Mostrar menú de herramientas' : 'Ocultar menú de herramientas');
+    menuToggleBtn.textContent = collapsed ? 'Mostrar menú' : 'Ocultar menú';
+  }
+  if(toolbarControls){
+    toolbarControls.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+    if(collapsed) toolbarControls.setAttribute('inert', '');
+    else toolbarControls.removeAttribute('inert');
+  }
+  expandCanvasToViewport();
+  adjustGuestView();
+}
+
+menuToggleBtn?.addEventListener('click', ()=>{
+  const collapsed = headerEl?.dataset.collapsed === 'true';
+  manualMenuState = collapsed ? false : true;
+  applyMenuState();
+});
+
+const handleMenuQueryChange = (e)=>{
+  if(e && !e.matches){
+    manualMenuState = null;
+  }
+  applyMenuState();
+};
+
+if(typeof menuQuery.addEventListener === 'function'){
+  menuQuery.addEventListener('change', handleMenuQueryChange);
+} else if(typeof menuQuery.addListener === 'function'){
+  menuQuery.addListener(handleMenuQueryChange);
+}
+
+applyMenuState();
+
 function refreshUi(){
   updateLockToggle();
   updateGuestControls();
@@ -240,8 +327,8 @@ function adjustGuestView(){
   }
   canvas.style.transform = '';
   canvas.style.transformOrigin = '';
-  const headerHeight = headerEl ? headerEl.offsetHeight : 0;
-  const availableHeight = Math.max(200, window.innerHeight - headerHeight);
+  const headerH = headerHeight();
+  const availableHeight = Math.max(200, window.innerHeight - headerH);
   const availableWidth = window.innerWidth;
   const targetHeight = cssHeight || canvas.offsetHeight || availableHeight;
   const targetWidth = canvas.offsetWidth || availableWidth;
@@ -398,7 +485,10 @@ lockToggle?.addEventListener('change', ()=>{
 refreshUi();
 if(sizeInput) sizeInput.value = String(getPenSize());
 if(eraserSizeInput) eraserSizeInput.value = String(getEraserSize());
-window.addEventListener('resize', ()=> adjustGuestView());
+window.addEventListener('resize', ()=>{
+  expandCanvasToViewport();
+  adjustGuestView();
+});
 
 function canvasSnapshot(){
   const off = document.createElement('canvas');
