@@ -18,7 +18,7 @@
     .wrap { display:grid; grid-template-rows: auto 1fr; height: 100dvh; }
     header { display:flex; gap:.5rem; align-items:center; padding:.5rem; flex-wrap:wrap; background: linear-gradient(180deg, rgba(17,24,39,.95), rgba(17,24,39,.6)); backdrop-filter: blur(6px); position: sticky; top:0; z-index:10; }
     header .toolbar-controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; flex:1 1 auto; }
-    header .toolbar-controls > *, #menuToggle { border:1px solid var(--border); background:#0b1220; color:var(--txt); padding:.45rem .6rem; border-radius:.55rem; font-size:14px; line-height:1; }
+    header .toolbar-controls > *:not(.sep), #menuToggle { border:1px solid var(--border); background:#0b1220; color:var(--txt); padding:.45rem .6rem; border-radius:.55rem; font-size:14px; line-height:1; }
     header label { display:flex; align-items:center; gap:.4rem; }
     header input[type="text"], header input[type="number"] { background:#0b1220; color:var(--txt); border:1px solid var(--border); padding:.35rem .5rem; height:28px; }
     header input::placeholder { color:#cbd5e1; opacity:.8; }
@@ -31,7 +31,7 @@
     #menuToggle { display:inline-flex; justify-content:center; align-items:center; gap:.35rem; }
     header[data-role="host"] { box-shadow: 0 0 0 2px rgba(22,163,74,0.35); }
     header[data-role="host"] #menuToggle,
-    header[data-role="host"] .toolbar-controls > * { border-color:#16a34a; }
+    header[data-role="host"] .toolbar-controls > *:not(.sep) { border-color:#16a34a; }
     header[data-role="host"] strong { color:#34d399; }
     @media (max-width: 900px){
       header { flex-direction:column; align-items:stretch; }
@@ -42,7 +42,7 @@
     .hidden { display:none !important; }
     .board { height: 100%; overflow:auto; background:#0b1220; }
     #canvas { width:100%; display:block; background:#0b1220; touch-action: none; cursor: crosshair; }
-    .sep { width:1px; height:28px; background:var(--border); margin:0 .25rem; }
+    .sep { width:1px; height:28px; background:var(--border); margin:0 .25rem; display:inline-block; }
     .chip { font-variant-numeric: tabular-nums; color:#a7f3d0; border-color:#065f46; }
     .pill { border-radius:999px; padding:.25rem .6rem; border:1px solid #065f46; background:#042f2e; }
     .kbd { padding:.1rem .35rem; border:1px solid var(--border); border-bottom-width:2px; border-radius:.35rem; background:#0b1220; color:#e5e7eb; }
