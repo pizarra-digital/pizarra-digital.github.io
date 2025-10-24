@@ -500,7 +500,7 @@ function updateRoleUi(){
   const hideEdit = guestConnected && remoteLock;
   toggleHidden(editControlEls, hideEdit);
   if(joinBtn){
-    const hideJoin = guestConnected;
+    const hideJoin = guestConnected || isHost;
     joinBtn.classList.toggle('hidden', hideJoin);
   }
   if(headerEl) headerEl.dataset.role = isHost ? 'host' : 'guest';
@@ -576,7 +576,7 @@ function refreshUi(){
     if(count > 0){
       setStatus(`conectados: ${count}`, 'connected');
     } else {
-      setStatus('esperando conexiones', 'pending');
+      setStatus('esperando conexiones', 'connected');
     }
   }
   updateRoleUi();
@@ -1049,7 +1049,7 @@ function updateStatusForGuests(){
   if(count > 0){
     setStatus(`conectados: ${count}`, 'connected');
   } else {
-    setStatus('esperando conexiones', 'pending');
+    setStatus('esperando conexiones', 'connected');
   }
 }
 
@@ -1071,7 +1071,7 @@ function startHost(){
       myCodeEl.textContent=id;
     }
     shareUrl = buildShareUrl(id);
-    setStatus('esperando conexiones', 'pending');
+    setStatus('esperando conexiones', 'connected');
   });
   peer.on('connection', c=>{
     guests.set(c.peer, c);
