@@ -124,7 +124,8 @@ let conn = null;          // conexión a anfitrión (cuando eres cliente)
 const guests = new Map(); // conexiones a invitados (cuando eres anfitrión)
 let isHost = false;
 let drawing = false;
-let last = null;          // último punto
+let lastPoint = null;     // último punto registrado
+let lastMidpoint = null;  // último punto medio para suavizado
 let erasing = false;
 let guestLock = false;    // bloqueo impuesto por el anfitrión
 let remoteLock = false;   // bloqueo recibido cuando eres invitado
@@ -391,12 +392,23 @@ function adjustGuestView(){
 }
 
 // ===== Dibujo local y sincronización =====
-function drawLine(x0,y0,x1,y1,color,size,mode){
+function drawSegment(seg){
+  if(!seg) return;
   ctx.save();
-  if(mode==='erase'){ ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)'; }
-  else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = color; }
-  ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke(); ctx.restore();
+  if(seg.mode==='erase'){ ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)'; }
+  else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = seg.color; }
+  ctx.lineWidth = seg.size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(seg.x0, seg.y0);
+  if(Number.isFinite(seg.cx) && Number.isFinite(seg.cy)){
+    ctx.quadraticCurveTo(seg.cx, seg.cy, seg.x1, seg.y1);
+  } else {
+    ctx.lineTo(seg.x1, seg.y1);
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 // Puntero/Toque
 function pointerXY(e){
@@ -410,7 +422,9 @@ function pointerXY(e){
 }
 function down(e){
   if(drawingLocked()) return;
-  drawing = true; last = pointerXY(e);
+  drawing = true;
+  lastPoint = pointerXY(e);
+  lastMidpoint = lastPoint;
 }
 function move(e){
   if(!drawing) return;
@@ -418,26 +432,52 @@ function move(e){
   const p = pointerXY(e);
   const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
   const size = erasing ? getEraserSize() : getPenSize();
-  const dx = p.x - last.x;
-  const dy = p.y - last.y;
-  const dist = Math.hypot(dx, dy);
-  const maxStep = Math.max(2, size * 0.45);
-  const steps = Math.max(1, Math.ceil(dist / maxStep));
-  let prevX = last.x;
-  let prevY = last.y;
-  for(let i=1;i<=steps;i++){
-    const t = i/steps;
-    const nx = last.x + dx * t;
-    const ny = last.y + dy * t;
-    drawLine(prevX, prevY, nx, ny, color, size, erasing?'erase':'draw');
-    emitStroke({x0:prevX,y0:prevY,x1:nx,y1:ny,color,size,mode: erasing?'erase':'draw'});
-    prevX = nx;
-    prevY = ny;
-  }
-  last = p; e.preventDefault();
+  const mid = {
+    x: (lastPoint.x + p.x) / 2,
+    y: (lastPoint.y + p.y) / 2
+  };
+  const segment = {
+    x0: lastMidpoint?.x ?? lastPoint.x,
+    y0: lastMidpoint?.y ?? lastPoint.y,
+    cx: lastPoint.x,
+    cy: lastPoint.y,
+    x1: mid.x,
+    y1: mid.y,
+    color,
+    size,
+    mode: erasing ? 'erase' : 'draw'
+  };
+  drawSegment(segment);
+  emitStroke(segment);
+  lastPoint = p;
+  lastMidpoint = mid;
+  e.preventDefault();
 }
 
-function up(){ drawing=false; last=null; }
+function up(e){
+  if(!drawing) return;
+  const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
+  const size = erasing ? getEraserSize() : getPenSize();
+  const endPoint = e ? pointerXY(e) : lastPoint;
+  if(lastPoint && lastMidpoint && endPoint){
+    const segment = {
+      x0: lastMidpoint.x,
+      y0: lastMidpoint.y,
+      cx: lastPoint.x,
+      cy: lastPoint.y,
+      x1: endPoint.x,
+      y1: endPoint.y,
+      color,
+      size,
+      mode: erasing ? 'erase' : 'draw'
+    };
+    drawSegment(segment);
+    emitStroke(segment);
+  }
+  drawing=false;
+  lastPoint=null;
+  lastMidpoint=null;
+}
 
 function clearCanvas(){
   ctx.save();
@@ -581,7 +621,7 @@ function handleIncoming(msg, source){
     case 'stroke': {
       const s = msg.s;
       if(!s) break;
-      drawLine(s.x0,s.y0,s.x1,s.y1,s.color,s.size,s.mode);
+      drawSegment(s);
       if(isHost) broadcast(msg, source?.peer);
       break;
     }
