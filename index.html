@@ -5,23 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pizarra WebRTC + PeerJS</title>
   <style>
-    :root { --bg: #0f172a; --panel: #111827; --ink: #16a34a; --txt: #e5e7eb; }
+    :root { 
+      --bg: #0f172a; 
+      --panel: #111827; 
+      --ink: #16a34a; 
+      --txt: #e5e7eb; 
+      --muted: #9ca3af;
+      --border: #374151;
+    }
     * { box-sizing: border-box; }
     body { margin:0; background: var(--bg); color: var(--txt); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
     .wrap { display:grid; grid-template-rows: auto 1fr; height: 100dvh; }
-    header { display:flex; gap:.5rem; align-items:center; padding:.5rem; flex-wrap:wrap; background: linear-gradient(180deg, rgba(17,24,39,.9), rgba(17,24,39,.6)); backdrop-filter: blur(6px); position: sticky; top:0; z-index:10; }
-    header>* { border:1px solid #374151; background:#0b1220; color:var(--txt); padding:.4rem .6rem; border-radius:.5rem; }
-    header input[type="text"], header input[type="number"] { background:#0b1220; }
-    header .btn { cursor:pointer; }
+    header { display:flex; gap:.5rem; align-items:center; padding:.5rem; flex-wrap:wrap; background: linear-gradient(180deg, rgba(17,24,39,.95), rgba(17,24,39,.6)); backdrop-filter: blur(6px); position: sticky; top:0; z-index:10; }
+    header>* { border:1px solid var(--border); background:#0b1220; color:var(--txt); padding:.45rem .6rem; border-radius:.55rem; font-size:14px; line-height:1; }
+    header label { display:flex; align-items:center; gap:.4rem; }
+    header input[type="text"], header input[type="number"] { background:#0b1220; color:var(--txt); border:1px solid var(--border); padding:.35rem .5rem; height:28px; }
+    header input::placeholder { color:#cbd5e1; opacity:.8; }
+    header input[type="color"] { width:40px; height:28px; padding:0; border-radius:.35rem; }
+    header .btn { cursor:pointer; user-select:none; }
     header .btn[disabled] { opacity:.5; cursor:not-allowed; }
-    #status { margin-left:auto; border:none; background:transparent; color:#9ca3af; }
-    #canvas { width:100%; height:100%; display:block; background:#0b1220; touch-action: none; cursor: crosshair; }
-    .sep { width:1px; height:28px; background:#374151; margin:0 .25rem; }
+    #status { margin-left:auto; border:none; background:transparent; color:var(--muted); padding:0; }
+    .board { height: 100%; overflow:auto; background:#0b1220; }
+    #canvas { width:100%; display:block; background:#0b1220; touch-action: none; cursor: crosshair; }
+    .sep { width:1px; height:28px; background:var(--border); margin:0 .25rem; }
     .chip { font-variant-numeric: tabular-nums; color:#a7f3d0; border-color:#065f46; }
-    .pill { border-radius:999px; padding:.25rem .6rem; }
+    .pill { border-radius:999px; padding:.25rem .6rem; border:1px solid #065f46; background:#042f2e; }
+    .kbd { padding:.1rem .35rem; border:1px solid var(--border); border-bottom-width:2px; border-radius:.35rem; background:#0b1220; color:#e5e7eb; }
+
+    /* QR overlay */
+    .qr-overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.65); z-index:50; }
+    .qr-card{ background:#0b1220; border:1px solid var(--border); padding:1rem; border-radius:12px; width:min(92vw,420px); }
+    .qr-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+    .qr-box{ display:flex; justify-content:center; padding:1rem; background:#fff; border-radius:12px; }
+    .qr-meta{ font-size:.9rem; color:var(--muted); margin-top:.5rem; word-break:break-all; }
   </style>
-  <!-- PeerJS CDN -->
+  <!-- PeerJS + QR + jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -32,16 +53,38 @@
       <label>Código <input id="code" type="text" placeholder="ABC123" style="width:7rem;text-transform:uppercase"/></label>
       <button id="joinBtn" class="btn">Unirse</button>
       <span id="myCode" class="pill chip" title="Código de la sesión" style="display:none"></span>
+      <button id="qrBtn" class="btn" title="Mostrar QR de conexión">QR</button>
       <span class="sep"></span>
       <label>Color <input id="color" type="color" value="#16a34a" /></label>
       <label>Grosor <input id="size" type="number" min="1" max="50" value="4" style="width:4.5rem"/></label>
       <button id="eraser" class="btn">Borrador</button>
       <button id="clear" class="btn">Limpiar</button>
       <span class="sep"></span>
+      <label>Fondo <input id="bg" type="color" value="#0b1220" /></label>
+      <button id="addSpace" class="btn" title="Añadir espacio vertical">+ espacio</button>
+      <button id="savePdf" class="btn" title="Guardar como PDF">Guardar PDF</button>
+      <span class="sep"></span>
       <label><input id="readonly" type="checkbox"/> Solo proyectar</label>
       <span id="status">sin conexión</span>
     </header>
-    <canvas id="canvas"></canvas>
+    <div class="board" id="board">
+      <canvas id="canvas" style="height: calc(100vh - 56px);"></canvas>
+    </div>
+  </div>
+
+  <!-- QR modal -->
+  <div class="qr-overlay" id="qrOverlay" role="dialog" aria-modal="true">
+    <div class="qr-card">
+      <div class="qr-head">
+        <strong>Conéctate a esta pizarra</strong>
+        <button id="qrClose" class="btn">Cerrar</button>
+      </div>
+      <div class="qr-box"><div id="qr"></div></div>
+      <div class="qr-meta">
+        <div>Abre esta URL y usa el código <span class="kbd" id="qrCodeText">—</span></div>
+        <div id="qrUrl">—</div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -69,26 +112,44 @@ let last = null;          // último punto
 let erasing = false;
 const statusEl = document.getElementById('status');
 
-// ===== Canvas escalado HiDPI =====
+const board = document.getElementById('board');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-function resize() {
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const { clientWidth:w, clientHeight:h } = canvas;
-  canvas.width = w * dpr; canvas.height = h * dpr; ctx.scale(dpr, dpr);
+let cssHeight = null; // altura del canvas en CSS px
+
+// ===== Canvas escalado HiDPI + altura dinámica =====
+function setCanvasCssHeight(h){
+  canvas.style.height = h+"px"; // esto dispara el ResizeObserver
 }
-const ro = new ResizeObserver(() => { const img = ctx.getImageData(0,0,canvas.width,canvas.height); resize(); ctx.putImageData(img,0,0); });
+function resizeInternal(){
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+  canvas.width = Math.max(1, Math.floor(w*dpr));
+  canvas.height = Math.max(1, Math.floor(h*dpr));
+  ctx.setTransform(1,0,0,1,0,0); // reset
+  ctx.scale(dpr, dpr);
+  try{ ctx.putImageData(img,0,0); }catch(e){}
+}
+const ro = new ResizeObserver(()=> resizeInternal());
 ro.observe(canvas);
-window.addEventListener('load', resize);
+window.addEventListener('load', ()=>{
+  cssHeight = Math.round(window.innerHeight - 56);
+  setCanvasCssHeight(cssHeight);
+});
+
+function growCanvas(extra=800){
+  cssHeight += extra; setCanvasCssHeight(cssHeight);
+  // notificar a clientes
+  if(isHost) broadcast({type:'grow', h: cssHeight});
+}
 
 // ===== Utiles =====
 const $ = (id)=>document.getElementById(id);
 function rndCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
 function setStatus(t){ statusEl.textContent = t; }
-function broadcast(payload){
-  if(!isHost) return;
-  guests.forEach(g=>{ try{ g.open && g.send(payload); }catch(e){} });
-}
+function broadcast(payload){ if(!isHost) return; guests.forEach(g=>{ try{ g.open && g.send(payload); }catch(e){} }); }
 
 // ===== Dibujo local y sincronización =====
 function drawLine(x0,y0,x1,y1,color,size,mode){
@@ -98,83 +159,18 @@ function drawLine(x0,y0,x1,y1,color,size,mode){
   ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke(); ctx.restore();
 }
-function emitStroke(s){
-  if(isHost){ broadcast({type:'stroke', s}); }
-  else if(conn && conn.open){ conn.send({type:'stroke', s}); }
-}
-function emitClear(){
-  if(isHost){ broadcast({type:'clear'}); }
-  else if(conn && conn.open){ conn.send({type:'clear'}); }
-}
+function emitStroke(s){ if(isHost){ broadcast({type:'stroke', s}); } else if(conn && conn.open){ conn.send({type:'stroke', s}); } }
+function emitClear(){ if(isHost){ broadcast({type:'clear'}); } else if(conn && conn.open){ conn.send({type:'clear'}); } }
 
 // Puntero/Toque
-function pointerXY(e){
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX ?? e.touches[0].clientX) - rect.left;
-  const y = (e.clientY ?? e.touches[0].clientY) - rect.top;
-  return {x,y};
-}
-
-function down(e){
-  if($('readonly').checked) return; // modo solo proyector, no dibuja
-  drawing = true; last = pointerXY(e);
-}
+function pointerXY(e){ const rect = canvas.getBoundingClientRect(); const x = (e.clientX ?? e.touches[0].clientX) - rect.left; const y = (e.clientY ?? e.touches[0].clientY) - rect.top; return {x,y}; }
+function down(e){ if($('readonly').checked) return; drawing = true; last = pointerXY(e); }
 function move(e){
   if(!drawing) return; const p = pointerXY(e);
-  const color = erasing ? '#000000' : $('color').value;
-  const size = parseFloat($('size').value)||4;
+  // crecer si nos acercamos al borde inferior
+  const edge = canvas.getBoundingClientRect().height - 150; if(p.y > edge) { growCanvas(800); board.scrollTop = board.scrollHeight; }
+  const color = erasing ? '#000000' : $('color').value; const size = parseFloat($('size').value)||4;
   drawLine(last.x,last.y,p.x,p.y,color,size, erasing?'erase':'draw');
   emitStroke({x0:last.x,y0:last.y,x1:p.x,y1:p.y,color,size,mode: erasing?'erase':'draw'});
   last = p; e.preventDefault();
 }
-function up(){ drawing=false; last=null; }
-
-canvas.addEventListener('pointerdown', down);
-canvas.addEventListener('pointermove', move);
-window.addEventListener('pointerup', up);
-canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
-
-$('eraser').onclick = ()=>{ erasing = !erasing; $('eraser').textContent = erasing? 'Borrador (on)':'Borrador'; };
-$('clear').onclick = ()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); emitClear(); };
-
-// ===== Host =====
-$('hostBtn').onclick = ()=>{
-  if(peer){ try{ peer.destroy(); }catch(e){} }
-  const id = rndCode();
-  isHost = true; peer = new Peer(id, peerConfig);
-  setStatus('creando sesión…');
-  peer.on('open', ()=>{ $('myCode').style.display='inline-block'; $('myCode').textContent = id; setStatus('esperando conexiones'); });
-  peer.on('connection', c=>{
-    guests.set(c.peer, c);
-    setStatus(`conectados: ${guests.size}`);
-    c.on('close', ()=>{ guests.delete(c.peer); setStatus(`conectados: ${guests.size}`); });
-    c.on('data', msg=>{
-      if(msg.type==='stroke'){ const s=msg.s; drawLine(s.x0,s.y0,s.x1,s.y1,s.color,s.size,s.mode); broadcast(msg); }
-      if(msg.type==='clear'){ ctx.clearRect(0,0,canvas.width,canvas.height); broadcast(msg); }
-    });
-    // enviar un ping para confirmar estado
-    try{ c.send({type:'hello'}); }catch(e){}
-  });
-  peer.on('error', e=>{ console.error(e); setStatus('error de conexión'); });
-};
-
-// ===== Cliente =====
-$('joinBtn').onclick = ()=>{
-  const id = $('code').value.trim().toUpperCase(); if(!id) { alert('Introduce un código'); return; }
-  isHost = false; if(peer){ try{ peer.destroy(); }catch(e){} }
-  peer = new Peer(null, peerConfig);
-  setStatus('conectando…');
-  peer.on('open', ()=>{
-    conn = peer.connect(id, { reliable:true });
-    conn.on('open', ()=>{ setStatus('conectado'); });
-    conn.on('data', msg=>{
-      if(msg.type==='stroke'){ const s=msg.s; drawLine(s.x0,s.y0,s.x1,s.y1,s.color,s.size,s.mode); }
-      if(msg.type==='clear'){ ctx.clearRect(0,0,canvas.width,canvas.height); }
-    });
-    conn.on('close', ()=> setStatus('cerrado'));
-  });
-  peer.on('error', e=>{ console.error(e); setStatus('error de conexión'); });
-};
-</script>
-</body>
-</html>
