@@ -29,6 +29,10 @@
     header[data-collapsed="true"] .toolbar-controls { display:none; }
     header[data-collapsed="true"] #status { margin-left:0; }
     #menuToggle { display:none; }
+    header[data-role="host"] { box-shadow: 0 0 0 2px rgba(22,163,74,0.35); }
+    header[data-role="host"] #menuToggle,
+    header[data-role="host"] .toolbar-controls > * { border-color:#16a34a; }
+    header[data-role="host"] strong { color:#34d399; }
     @media (max-width: 900px){
       header { flex-direction:column; align-items:stretch; }
       header .toolbar-controls { width:100%; }
@@ -61,9 +65,9 @@
     <header data-collapsed="false">
       <button id="menuToggle" class="btn menu-toggle" type="button" aria-expanded="true" aria-controls="toolbarControls">Ocultar menú</button>
       <div id="toolbarControls" class="toolbar-controls">
-        <strong>Modo:</strong>
-        <button id="hostBtn" class="btn">Anfitrión</button>
-        <span class="sep"></span>
+        <strong id="roleLabel">Modo:</strong>
+        <button id="hostBtn" class="btn host-only">Anfitrión</button>
+        <span class="sep host-only"></span>
         <label>Código <input id="code" type="text" placeholder="ABC123" style="width:7rem;text-transform:uppercase"/></label>
         <button id="joinBtn" class="btn">Unirse</button>
         <span id="myCode" class="pill chip host-only" title="Código de la sesión" style="display:none"></span>
@@ -235,6 +239,7 @@ const menuQuery = window.matchMedia('(max-width: 900px)');
 let manualMenuState = null;
 const hostOnlyEls = Array.from(document.querySelectorAll('.host-only'));
 const editControlEls = Array.from(document.querySelectorAll('.edit-only'));
+const roleLabel = $('roleLabel');
 
 function clamp(value, min, max){
   const n = Number.isFinite(value) ? value : min;
@@ -298,6 +303,10 @@ function updateRoleUi(){
   toggleHidden(hostOnlyEls, guestConnected);
   const hideEdit = guestConnected && remoteLock;
   toggleHidden(editControlEls, hideEdit);
+  if(headerEl) headerEl.dataset.role = isHost ? 'host' : 'guest';
+  if(roleLabel){
+    roleLabel.textContent = isHost ? 'Modo (anfitrión):' : 'Modo (invitado):';
+  }
 }
 
 function currentMenuCollapsed(){
