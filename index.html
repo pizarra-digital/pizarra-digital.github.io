@@ -36,6 +36,7 @@
       #menuToggle { display:inline-flex; justify-content:center; align-items:center; gap:.35rem; }
       #status { align-self:flex-end; }
     }
+    .hidden { display:none !important; }
     .board { height: 100%; overflow:auto; background:#0b1220; }
     #canvas { width:100%; display:block; background:#0b1220; touch-action: none; cursor: crosshair; }
     .sep { width:1px; height:28px; background:var(--border); margin:0 .25rem; }
@@ -65,21 +66,21 @@
         <span class="sep"></span>
         <label>Código <input id="code" type="text" placeholder="ABC123" style="width:7rem;text-transform:uppercase"/></label>
         <button id="joinBtn" class="btn">Unirse</button>
-        <span id="myCode" class="pill chip" title="Código de la sesión" style="display:none"></span>
-        <button id="qrBtn" class="btn" title="Mostrar QR de conexión">QR</button>
-        <span class="sep"></span>
-        <label>Color <input id="color" type="color" value="#16a34a" /></label>
-        <label>Grosor <input id="size" type="number" min="1" max="50" value="4" style="width:4.5rem"/></label>
-        <label>Grosor borrador <input id="eraserSize" type="number" min="1" max="100" value="20" style="width:4.5rem"/></label>
-        <button id="eraser" class="btn">Borrador</button>
-        <button id="clear" class="btn">Limpiar</button>
-        <span class="sep"></span>
-        <label>Fondo <input id="bg" type="color" value="#0b1220" /></label>
-        <button id="addSpace" class="btn" title="Añadir espacio vertical">+ espacio</button>
-        <button id="savePdf" class="btn" title="Guardar como PDF">Guardar PDF</button>
-        <span class="sep"></span>
-        <label><input id="readonly" type="checkbox"/> Solo proyectar</label>
-        <label><input id="lockGuests" type="checkbox"/> Solo anfitrión dibuja</label>
+        <span id="myCode" class="pill chip host-only" title="Código de la sesión" style="display:none"></span>
+        <button id="qrBtn" class="btn host-only" title="Mostrar QR de conexión">QR</button>
+        <span class="sep edit-only"></span>
+        <label class="edit-only">Color <input id="color" type="color" value="#16a34a" /></label>
+        <label class="edit-only">Grosor <input id="size" type="number" min="1" max="50" value="4" style="width:4.5rem"/></label>
+        <label class="edit-only">Grosor borrador <input id="eraserSize" type="number" min="1" max="100" value="20" style="width:4.5rem"/></label>
+        <button id="eraser" class="btn edit-only">Borrador</button>
+        <span class="sep host-only"></span>
+        <button id="clear" class="btn host-only">Limpiar</button>
+        <label class="host-only">Fondo <input id="bg" type="color" value="#0b1220" /></label>
+        <button id="addSpace" class="btn host-only" title="Añadir espacio vertical">+ espacio</button>
+        <button id="savePdf" class="btn host-only" title="Guardar como PDF">Guardar PDF</button>
+        <span class="sep host-only"></span>
+        <label class="host-only"><input id="readonly" type="checkbox"/> Solo proyectar</label>
+        <label class="host-only"><input id="lockGuests" type="checkbox"/> Solo anfitrión dibuja</label>
       </div>
       <span id="status">sin conexión</span>
     </header>
@@ -206,17 +207,29 @@ const readonlyToggle = $('readonly');
 const lockToggle = $('lockGuests');
 const myCodeEl = $('myCode');
 const codeInput = $('code');
-const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput, clearBtn, addSpaceBtn];
+const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput];
 const headerEl = document.querySelector('header');
 let canvasScale = 1;
 const menuToggleBtn = $('menuToggle');
 const toolbarControls = $('toolbarControls');
 const menuQuery = window.matchMedia('(max-width: 900px)');
 let manualMenuState = null;
+const hostOnlyEls = Array.from(document.querySelectorAll('.host-only'));
+const editControlEls = Array.from(document.querySelectorAll('.edit-only'));
 
 function clamp(value, min, max){
   const n = Number.isFinite(value) ? value : min;
   return Math.min(max, Math.max(min, n));
+}
+
+function toggleHidden(elements, hidden){
+  elements.forEach(el=>{
+    if(!el) return;
+    el.classList.toggle('hidden', hidden);
+    if(hidden && typeof el.contains === 'function' && el.contains(document.activeElement)){
+      try{ document.activeElement.blur(); }catch(e){}
+    }
+  });
 }
 
 function getPenSize(){
@@ -259,6 +272,13 @@ function updateBackgroundInput(){
   const disable = !isHost && !!(conn && conn.open);
   bgInput.disabled = disable;
   if(disable) bgInput.value = currentBg;
+}
+
+function updateRoleUi(){
+  const guestConnected = !isHost && !!(conn && conn.open);
+  toggleHidden(hostOnlyEls, guestConnected);
+  const hideEdit = guestConnected && remoteLock;
+  toggleHidden(editControlEls, hideEdit);
 }
 
 function currentMenuCollapsed(){
@@ -312,6 +332,7 @@ function refreshUi(){
   if(!isHost && conn && conn.open){
     setStatus(remoteLock ? 'Bloqueado por anfitrión' : 'conectado');
   }
+  updateRoleUi();
   adjustGuestView();
 }
 
