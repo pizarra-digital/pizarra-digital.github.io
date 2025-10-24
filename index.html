@@ -76,7 +76,6 @@
         <span class="sep host-only"></span>
         <button id="clear" class="btn host-only">Limpiar</button>
         <label class="host-only">Fondo <input id="bg" type="color" value="#0b1220" /></label>
-        <button id="addSpace" class="btn host-only" title="Añadir espacio vertical">+ espacio</button>
         <button id="savePdf" class="btn host-only" title="Guardar como PDF">Guardar PDF</button>
         <span class="sep host-only"></span>
         <label class="host-only"><input id="readonly" type="checkbox"/> Solo proyectar</label>
@@ -135,6 +134,7 @@ const board = document.getElementById('board');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cssHeight = null; // altura del canvas en CSS px
+let lastViewportHeight = null;
 
 // ===== Canvas escalado HiDPI + altura dinámica =====
 function setCanvasCssHeight(h){
@@ -151,19 +151,28 @@ function desiredCanvasHeight(){
   return Math.max(200, value);
 }
 
+function syncViewportWithGuests(){
+  if(!isHost) return;
+  if(typeof cssHeight !== 'number') return;
+  if(lastViewportHeight === cssHeight) return;
+  lastViewportHeight = cssHeight;
+  broadcast({type:'viewport', h: cssHeight});
+}
+
 function expandCanvasToViewport(force=false){
   const target = desiredCanvasHeight();
-  if(cssHeight === null || force){
-    cssHeight = target;
-    setCanvasCssHeight(cssHeight);
-    return;
-  }
   const connected = !!(conn && conn.open);
-  if(isHost || !connected){
-    if(target > cssHeight){
-      cssHeight = target;
-      setCanvasCssHeight(cssHeight);
-    }
+  let next = cssHeight;
+  if(cssHeight === null || force) next = target;
+  else if(isHost) next = target;
+  else if(!connected && typeof cssHeight === 'number' && target > cssHeight) next = target;
+  if(next !== cssHeight){
+    cssHeight = next;
+    setCanvasCssHeight(cssHeight);
+    syncViewportWithGuests();
+  } else if(force && cssHeight !== null){
+    setCanvasCssHeight(cssHeight);
+    syncViewportWithGuests();
   }
 }
 
@@ -185,12 +194,6 @@ window.addEventListener('load', ()=>{
   applyMenuState();
 });
 
-function growCanvas(extra=800){
-  cssHeight += extra; setCanvasCssHeight(cssHeight);
-  // notificar a clientes
-  if(isHost) broadcast({type:'grow', h: cssHeight});
-}
-
 // ===== Utiles =====
 const $ = (id)=>document.getElementById(id);
 function rndCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
@@ -200,7 +203,6 @@ const sizeInput = $('size');
 const eraserSizeInput = $('eraserSize');
 const eraserBtn = $('eraser');
 const clearBtn = $('clear');
-const addSpaceBtn = $('addSpace');
 const savePdfBtn = $('savePdf');
 const bgInput = $('bg');
 const readonlyToggle = $('readonly');
@@ -398,13 +400,6 @@ function move(e){
   if(!drawing) return;
   if(!isHost && remoteLock){ drawing = false; return; }
   const p = pointerXY(e);
-  if(isHost){
-    const edge = canvas.getBoundingClientRect().height - 150;
-    if(p.y > edge){
-      growCanvas(800);
-      board.scrollTop = board.scrollHeight;
-    }
-  }
   const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
   const size = erasing ? getEraserSize() : getPenSize();
   drawLine(last.x,last.y,p.x,p.y,color,size, erasing?'erase':'draw');
@@ -561,14 +556,6 @@ function handleIncoming(msg, source){
       clearCanvas();
       if(isHost) broadcast(msg, source?.peer);
       break;
-    case 'grow':
-      if(typeof msg.h === 'number'){
-        cssHeight = Math.max(cssHeight, msg.h);
-        setCanvasCssHeight(cssHeight);
-        board.scrollTop = board.scrollHeight;
-      }
-      if(isHost) broadcast(msg, source?.peer);
-      break;
     case 'bg':
       if(typeof msg.color === 'string'){
         applyBackground(msg.color, false);
@@ -597,9 +584,14 @@ function handleIncoming(msg, source){
         if(typeof msg.h === 'number'){
           cssHeight = msg.h;
           setCanvasCssHeight(cssHeight);
-          board.scrollTop = board.scrollHeight;
         }
         if(msg.image) applySnapshot(msg.image);
+      }
+      break;
+    case 'viewport':
+      if(!isHost && typeof msg.h === 'number'){
+        cssHeight = msg.h;
+        setCanvasCssHeight(cssHeight);
       }
       break;
     case 'request-state':
@@ -627,18 +619,6 @@ function emitClear(){
 clearBtn?.addEventListener('click', ()=>{
   clearCanvas();
   emitClear();
-});
-
-function emitGrow(h){
-  if(isHost){ broadcast({type:'grow', h}); }
-  else if(conn && conn.open && !remoteLock){ conn.send({type:'grow', h}); }
-}
-
-addSpaceBtn?.addEventListener('click', ()=>{
-  cssHeight += 800;
-  setCanvasCssHeight(cssHeight);
-  board.scrollTop = board.scrollHeight;
-  emitGrow(cssHeight);
 });
 
 savePdfBtn?.addEventListener('click', ()=>{
@@ -670,6 +650,7 @@ function cleanupPeer(){
   isHost = false;
   guestLock = false;
   remoteLock = false;
+  lastViewportHeight = null;
   refreshUi();
   if(myCodeEl){
     myCodeEl.style.display = 'none';
