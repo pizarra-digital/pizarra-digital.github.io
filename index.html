@@ -171,7 +171,9 @@ let drawing = false;
 let lastPoint = null;     // último punto registrado
 let lastMidpoint = null;  // último punto medio para suavizado
 let erasing = false;
-let guestLock = false;    // bloqueo impuesto por el anfitrión
+let tempErasePointerId = null;
+let eraseModeBeforeOverride = false;
+let guestLock = true;     // bloqueo impuesto por el anfitrión (por defecto solo anfitrión dibuja)
 let remoteLock = false;   // bloqueo recibido cuando eres invitado
 const statusEl = document.getElementById('status');
 
@@ -615,7 +617,20 @@ function pointerXY(e){
 }
 function down(e){
   updateEraserCursorFromEvent(e);
-  if(drawingLocked()) return;
+  const pointerId = e?.pointerId ?? 'mouse';
+  const rightButton = e?.button === 2 || (e?.pointerType === 'mouse' && (e?.buttons & 2));
+  if(rightButton && tempErasePointerId === null){
+    eraseModeBeforeOverride = erasing;
+    if(!erasing) setEraserMode(true);
+    tempErasePointerId = pointerId;
+  }
+  if(drawingLocked()){
+    if(tempErasePointerId === pointerId){
+      setEraserMode(eraseModeBeforeOverride);
+      tempErasePointerId = null;
+    }
+    return;
+  }
   if(canvas?.setPointerCapture && e?.pointerId !== undefined){
     try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
   }
@@ -679,6 +694,11 @@ function up(e){
   if(canvas?.releasePointerCapture && e?.pointerId !== undefined){
     try{ canvas.releasePointerCapture(e.pointerId); }catch(err){}
   }
+  const pointerId = e?.pointerId ?? 'mouse';
+  if(tempErasePointerId !== null && pointerId === tempErasePointerId){
+    setEraserMode(eraseModeBeforeOverride);
+    tempErasePointerId = null;
+  }
   if(e?.type === 'pointerleave'){
     hideEraserCursor();
   }
@@ -690,6 +710,11 @@ function handlePointerLeave(e){
     up(e);
   } else if(canvas){
     canvas.classList.toggle('erase-mode', erasing);
+  }
+  const pointerId = e?.pointerId ?? 'mouse';
+  if(tempErasePointerId !== null && pointerId === tempErasePointerId){
+    setEraserMode(eraseModeBeforeOverride);
+    tempErasePointerId = null;
   }
 }
 
@@ -707,6 +732,7 @@ canvas.addEventListener('pointerup', up);
 canvas.addEventListener('pointerleave', handlePointerLeave);
 canvas.addEventListener('pointercancel', handlePointerLeave);
 canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
 
 sizeInput?.addEventListener('change', ()=>{ sizeInput.value = String(getPenSize()); });
 eraserSizeInput?.addEventListener('change', ()=>{ 
@@ -950,7 +976,7 @@ function cleanupPeer(){
   peer = null;
   shareUrl = '';
   isHost = false;
-  guestLock = false;
+  guestLock = true;
   remoteLock = false;
   setEraserMode(false);
   cssWidth = null;
@@ -982,7 +1008,7 @@ function startHost(){
   cleanupPeer();
   const id = rndCode();
   isHost = true;
-  guestLock = false;
+  guestLock = true;
   remoteLock = false;
   refreshUi();
   expandCanvasToViewport(true);
