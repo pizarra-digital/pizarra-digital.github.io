@@ -118,7 +118,7 @@
         </div>
         <div id="section-options" class="toolbar-section" data-section="options" role="tabpanel" aria-label="Otras opciones">
           <button id="clear" class="btn host-only">Limpiar</button>
-          <label class="host-only">Fondo <input id="bg" type="color" value="#0b1220" /></label>
+          <label class="host-only">Fondo <input id="bg" type="color" value="#ffffff" /></label>
           <button id="savePdf" class="btn host-only" title="Guardar como PDF">Guardar PDF</button>
           <label class="host-only"><input id="readonly" type="checkbox"/> Solo proyectar</label>
           <label class="host-only"><input id="lockGuests" type="checkbox"/> Solo anfitrión dibuja</label>
@@ -747,7 +747,7 @@ const qrCodeText = document.getElementById('qrCodeText');
 const qrBtn = document.getElementById('qrBtn');
 let qrInstance = null;
 let shareUrl = '';
-let currentBg = bgInput?.value || '#0b1220';
+let currentBg = bgInput?.value || '#ffffff';
 
 function ensureQr(){
   if(!qrInstance){
