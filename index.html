@@ -418,8 +418,22 @@ function move(e){
   const p = pointerXY(e);
   const color = erasing ? '#000000' : (colorInput?.value || '#16a34a');
   const size = erasing ? getEraserSize() : getPenSize();
-  drawLine(last.x,last.y,p.x,p.y,color,size, erasing?'erase':'draw');
-  emitStroke({x0:last.x,y0:last.y,x1:p.x,y1:p.y,color,size,mode: erasing?'erase':'draw'});
+  const dx = p.x - last.x;
+  const dy = p.y - last.y;
+  const dist = Math.hypot(dx, dy);
+  const maxStep = Math.max(2, size * 0.45);
+  const steps = Math.max(1, Math.ceil(dist / maxStep));
+  let prevX = last.x;
+  let prevY = last.y;
+  for(let i=1;i<=steps;i++){
+    const t = i/steps;
+    const nx = last.x + dx * t;
+    const ny = last.y + dy * t;
+    drawLine(prevX, prevY, nx, ny, color, size, erasing?'erase':'draw');
+    emitStroke({x0:prevX,y0:prevY,x1:nx,y1:ny,color,size,mode: erasing?'erase':'draw'});
+    prevX = nx;
+    prevY = ny;
+  }
   last = p; e.preventDefault();
 }
 
