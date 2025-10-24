@@ -277,10 +277,6 @@ ro.observe(canvas);
 window.addEventListener('load', ()=>{
   expandCanvasToViewport(true);
   applyMenuState();
-  const storedCode = loadStoredHostCode();
-  if(storedCode && codeInput){
-    codeInput.value = storedCode;
-  }
 });
 
 // ===== Utiles =====
@@ -290,15 +286,6 @@ function sanitizeCode(raw){
   const upper = (raw ?? '').toString().trim().toUpperCase();
   const cleaned = upper.replace(/[^A-Z0-9-]/g, '');
   return cleaned.slice(0, 32);
-}
-function loadStoredHostCode(){
-  try{ return sanitizeCode(localStorage?.getItem(HOST_CODE_KEY)); }catch(e){ return ''; }
-}
-function storeHostCode(code){
-  try{
-    if(code) localStorage?.setItem(HOST_CODE_KEY, code);
-    else localStorage?.removeItem(HOST_CODE_KEY);
-  }catch(e){}
 }
 function setStatus(text, state='disconnected'){
   if(!statusEl) return;
@@ -333,7 +320,6 @@ const sectionButtons = Array.from(document.querySelectorAll('.toolbar-nav .tab-b
 const toolbarSections = Array.from(document.querySelectorAll('.toolbar-section'));
 const sectionsMap = new Map(toolbarSections.map(sec=> [sec.dataset.section, sec]));
 let activeSection = toolbarControls?.dataset.active || 'session';
-const HOST_CODE_KEY = 'pizarra.hostCode';
 
 function clamp(value, min, max){
   const n = Number.isFinite(value) ? value : min;
@@ -869,10 +855,7 @@ if(codeInput){
     codeInput.value = sanitized;
   });
   codeInput.addEventListener('change', ()=>{
-    const sanitized = sanitizeCode(codeInput.value);
-    codeInput.value = sanitized;
-    if(sanitized) storeHostCode(sanitized);
-    else storeHostCode('');
+    codeInput.value = sanitizeCode(codeInput.value);
   });
 }
 window.addEventListener('resize', ()=>{
@@ -1079,8 +1062,6 @@ function startHost(){
   remoteLock = false;
   refreshUi();
   if(codeInput) codeInput.value = id;
-  if(desired) storeHostCode(id);
-  else storeHostCode('');
   expandCanvasToViewport(true);
   peer = new Peer(id, peerConfig);
   setStatus('creando sesión…', 'pending');
