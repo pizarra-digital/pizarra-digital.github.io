@@ -33,7 +33,14 @@
     header input[type="color"] { width:40px; height:28px; padding:0; border-radius:.35rem; }
     header .btn { cursor:pointer; user-select:none; }
     header .btn[disabled] { opacity:.5; cursor:not-allowed; }
-    #status { margin-left:auto; border:none; background:transparent; color:var(--muted); padding:0; }
+    #status { margin-left:auto; border:none; background:transparent; color:var(--muted); padding:0; display:flex; align-items:center; gap:.4rem; font-weight:500; }
+    #status::before{ content:''; width:.65rem; height:.65rem; border-radius:50%; background:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.35); transition:background .15s ease; }
+    #status[data-state="connected"]{ color:#bbf7d0; }
+    #status[data-state="connected"]::before{ background:#22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.3); }
+    #status[data-state="pending"]::before{ background:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.35); }
+    #status[data-state="locked"]::before{ background:#fb923c; box-shadow:0 0 0 2px rgba(251,146,60,.35); }
+    #status[data-state="error"]{ color:#fecaca; }
+    #status[data-state="error"]::before{ background:#f87171; box-shadow:0 0 0 2px rgba(248,113,113,.35); }
     header[data-collapsed="true"] .toolbar-controls { display:none; }
     header[data-collapsed="true"] #status { margin-left:0; }
     #menuToggle { display:inline-flex; justify-content:center; align-items:center; gap:.35rem; }
@@ -176,6 +183,7 @@ let eraseModeBeforeOverride = false;
 let guestLock = true;     // bloqueo impuesto por el anfitrión (por defecto solo anfitrión dibuja)
 let remoteLock = false;   // bloqueo recibido cuando eres invitado
 const statusEl = document.getElementById('status');
+if(statusEl && !statusEl.dataset.state){ statusEl.dataset.state = 'disconnected'; }
 
 const board = document.getElementById('board');
 const canvas = document.getElementById('canvas');
@@ -292,7 +300,11 @@ function storeHostCode(code){
     else localStorage?.removeItem(HOST_CODE_KEY);
   }catch(e){}
 }
-function setStatus(t){ statusEl.textContent = t; }
+function setStatus(text, state='disconnected'){
+  if(!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.dataset.state = state;
+}
 const colorInput = $('color');
 const sizeInput = $('size');
 const eraserSizeInput = $('eraserSize');
@@ -304,6 +316,7 @@ const readonlyToggle = $('readonly');
 const lockToggle = $('lockGuests');
 const myCodeEl = $('myCode');
 const codeInput = $('code');
+const joinBtn = $('joinBtn');
 const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput];
 const headerEl = document.querySelector('header');
 let canvasScale = 1;
@@ -500,6 +513,10 @@ function updateRoleUi(){
   toggleHidden(hostOnlyEls, guestConnected);
   const hideEdit = guestConnected && remoteLock;
   toggleHidden(editControlEls, hideEdit);
+  if(joinBtn){
+    const hideJoin = guestConnected;
+    joinBtn.classList.toggle('hidden', hideJoin);
+  }
   if(headerEl) headerEl.dataset.role = isHost ? 'host' : 'guest';
   if(roleLabel){
     roleLabel.textContent = isHost ? 'Modo (anfitrión):' : 'Modo (invitado):';
@@ -561,8 +578,11 @@ function refreshUi(){
   updateGuestControls();
   updateBackgroundInput();
   updateEraserLabel();
-  if(!isHost && conn && conn.open){
-    setStatus(remoteLock ? 'Bloqueado por anfitrión' : 'conectado');
+  if(!isHost){
+    if(conn && conn.open){
+      const locked = remoteLock;
+      setStatus(locked ? 'Bloqueado por anfitrión' : 'conectado', locked ? 'locked' : 'connected');
+    }
   }
   updateRoleUi();
   adjustGuestView();
@@ -1014,6 +1034,7 @@ function cleanupPeer(){
   lastViewportHeight = null;
   lastViewportWidth = null;
   applyCanvasWidth();
+  setStatus('sin conexión', 'disconnected');
   refreshUi();
   if(myCodeEl){
     myCodeEl.style.display = 'none';
@@ -1032,7 +1053,12 @@ function buildShareUrl(code){
 }
 
 function updateStatusForGuests(){
-  setStatus(`conectados: ${guests.size}`);
+  const count = guests.size;
+  if(count > 0){
+    setStatus(`conectados: ${count}`, 'connected');
+  } else {
+    setStatus('esperando conexiones', 'disconnected');
+  }
 }
 
 function startHost(){
@@ -1048,14 +1074,14 @@ function startHost(){
   else storeHostCode('');
   expandCanvasToViewport(true);
   peer = new Peer(id, peerConfig);
-  setStatus('creando sesión…');
+  setStatus('creando sesión…', 'pending');
   peer.on('open', ()=>{
     if(myCodeEl){
       myCodeEl.style.display='inline-block';
       myCodeEl.textContent=id;
     }
     shareUrl = buildShareUrl(id);
-    setStatus('esperando conexiones');
+    setStatus('esperando conexiones', 'disconnected');
   });
   peer.on('connection', c=>{
     guests.set(c.peer, c);
@@ -1069,12 +1095,12 @@ function startHost(){
     try{ c.send({type:'hello'}); }catch(e){}
   });
   peer.on('disconnected', ()=>{
-    setStatus('desconectado');
+    setStatus('desconectado', 'disconnected');
     refreshUi();
   });
   peer.on('error', e=>{
     console.error(e);
-    setStatus('error de conexión');
+    setStatus('error de conexión', 'error');
     refreshUi();
   });
 }
@@ -1093,18 +1119,18 @@ function startGuest(code, { silent=false } = {}){
   remoteLock = false;
   refreshUi();
   peer = new Peer(null, peerConfig);
-  setStatus('conectando…');
+  setStatus('conectando…', 'pending');
   peer.on('open', ()=>{
     conn = peer.connect(target, { reliable:true });
     refreshUi();
     conn.on('open', ()=>{
-      setStatus('conectado');
+      setStatus('conectado', 'connected');
       refreshUi();
       try{ conn.send({type:'request-state'}); }catch(e){}
     });
     conn.on('data', msg=> handleIncoming(msg, conn));
     conn.on('close', ()=>{
-      setStatus('cerrado');
+      setStatus('cerrado', 'disconnected');
       conn = null;
       cssWidth = null;
       applyCanvasWidth();
@@ -1112,7 +1138,7 @@ function startGuest(code, { silent=false } = {}){
     });
     conn.on('error', err=>{
       console.error(err);
-      setStatus('error de conexión');
+      setStatus('error de conexión', 'error');
       cssWidth = null;
       applyCanvasWidth();
       refreshUi();
@@ -1121,7 +1147,7 @@ function startGuest(code, { silent=false } = {}){
   });
   peer.on('error', e=>{
     console.error(e);
-    setStatus('error de conexión');
+    setStatus('error de conexión', 'error');
     refreshUi();
     if(!silent) alert('No se pudo crear la conexión.');
   });
