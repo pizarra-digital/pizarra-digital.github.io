@@ -134,12 +134,25 @@ const board = document.getElementById('board');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cssHeight = null; // altura del canvas en CSS px
+let cssWidth = null;
 let lastViewportHeight = null;
+let lastViewportWidth = null;
 
 // ===== Canvas escalado HiDPI + altura dinámica =====
 function setCanvasCssHeight(h){
   canvas.style.height = h+"px"; // esto dispara el ResizeObserver
+  applyCanvasWidth();
   adjustGuestView();
+}
+
+function applyCanvasWidth(){
+  if(typeof cssWidth === 'number' && !isHost){
+    canvas.style.width = cssWidth + "px";
+    canvas.style.maxWidth = 'none';
+  } else {
+    canvas.style.width = '';
+    canvas.style.removeProperty('max-width');
+  }
 }
 
 function headerHeight(){
@@ -154,9 +167,12 @@ function desiredCanvasHeight(){
 function syncViewportWithGuests(){
   if(!isHost) return;
   if(typeof cssHeight !== 'number') return;
-  if(lastViewportHeight === cssHeight) return;
+  const width = Math.round(canvas.clientWidth || board.clientWidth || window.innerWidth || 0);
+  if(width <= 0) return;
+  if(lastViewportHeight === cssHeight && lastViewportWidth === width) return;
   lastViewportHeight = cssHeight;
-  broadcast({type:'viewport', h: cssHeight});
+  lastViewportWidth = width;
+  broadcast({type:'viewport', h: cssHeight, w: width});
 }
 
 function expandCanvasToViewport(force=false){
@@ -301,7 +317,7 @@ function applyMenuState(){
     if(collapsed) toolbarControls.setAttribute('inert', '');
     else toolbarControls.removeAttribute('inert');
   }
-  expandCanvasToViewport();
+  expandCanvasToViewport(isHost);
   adjustGuestView();
 }
 
@@ -502,7 +518,7 @@ refreshUi();
 if(sizeInput) sizeInput.value = String(getPenSize());
 if(eraserSizeInput) eraserSizeInput.value = String(getEraserSize());
 window.addEventListener('resize', ()=>{
-  expandCanvasToViewport();
+  expandCanvasToViewport(isHost);
   adjustGuestView();
 });
 
@@ -532,9 +548,12 @@ function applySnapshot(dataUrl){
 
 function sendStateTo(connection){
   try{
+    const width = Math.round(canvas.clientWidth || board.clientWidth || window.innerWidth || 0);
+    const height = typeof cssHeight === 'number' ? cssHeight : desiredCanvasHeight();
     connection.send({
       type:'state',
-      h: cssHeight,
+      h: height,
+      w: width,
       bg: currentBg,
       lock: guestLock,
       image: canvasSnapshot()
@@ -581,6 +600,10 @@ function handleIncoming(msg, source){
           remoteLock = msg.lock;
           refreshUi();
         }
+        if(Number.isFinite(msg.w)){
+          cssWidth = msg.w;
+          applyCanvasWidth();
+        }
         if(typeof msg.h === 'number'){
           cssHeight = msg.h;
           setCanvasCssHeight(cssHeight);
@@ -589,9 +612,15 @@ function handleIncoming(msg, source){
       }
       break;
     case 'viewport':
-      if(!isHost && typeof msg.h === 'number'){
-        cssHeight = msg.h;
-        setCanvasCssHeight(cssHeight);
+      if(!isHost){
+        if(Number.isFinite(msg.w)){
+          cssWidth = msg.w;
+          applyCanvasWidth();
+        }
+        if(typeof msg.h === 'number'){
+          cssHeight = msg.h;
+          setCanvasCssHeight(cssHeight);
+        }
       }
       break;
     case 'request-state':
@@ -650,7 +679,10 @@ function cleanupPeer(){
   isHost = false;
   guestLock = false;
   remoteLock = false;
+  cssWidth = null;
   lastViewportHeight = null;
+  lastViewportWidth = null;
+  applyCanvasWidth();
   refreshUi();
   if(myCodeEl){
     myCodeEl.style.display = 'none';
@@ -679,6 +711,7 @@ function startHost(){
   guestLock = false;
   remoteLock = false;
   refreshUi();
+  expandCanvasToViewport(true);
   peer = new Peer(id, peerConfig);
   setStatus('creando sesión…');
   peer.on('open', ()=>{
@@ -736,11 +769,15 @@ function startGuest(code, { silent=false } = {}){
     conn.on('close', ()=>{
       setStatus('cerrado');
       conn = null;
+      cssWidth = null;
+      applyCanvasWidth();
       refreshUi();
     });
     conn.on('error', err=>{
       console.error(err);
       setStatus('error de conexión');
+      cssWidth = null;
+      applyCanvasWidth();
       refreshUi();
       if(!silent) alert('Error en la conexión con el anfitrión.');
     });
