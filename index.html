@@ -149,7 +149,6 @@ function growCanvas(extra=800){
 const $ = (id)=>document.getElementById(id);
 function rndCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
 function setStatus(t){ statusEl.textContent = t; }
-function broadcast(payload){ if(!isHost) return; guests.forEach(g=>{ try{ g.open && g.send(payload); }catch(e){} }); }
 
 // ===== Dibujo local y sincronización =====
 function drawLine(x0,y0,x1,y1,color,size,mode){
@@ -159,18 +158,323 @@ function drawLine(x0,y0,x1,y1,color,size,mode){
   ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke(); ctx.restore();
 }
-function emitStroke(s){ if(isHost){ broadcast({type:'stroke', s}); } else if(conn && conn.open){ conn.send({type:'stroke', s}); } }
-function emitClear(){ if(isHost){ broadcast({type:'clear'}); } else if(conn && conn.open){ conn.send({type:'clear'}); } }
-
 // Puntero/Toque
 function pointerXY(e){ const rect = canvas.getBoundingClientRect(); const x = (e.clientX ?? e.touches[0].clientX) - rect.left; const y = (e.clientY ?? e.touches[0].clientY) - rect.top; return {x,y}; }
 function down(e){ if($('readonly').checked) return; drawing = true; last = pointerXY(e); }
 function move(e){
-  if(!drawing) return; const p = pointerXY(e);
-  // crecer si nos acercamos al borde inferior
-  const edge = canvas.getBoundingClientRect().height - 150; if(p.y > edge) { growCanvas(800); board.scrollTop = board.scrollHeight; }
-  const color = erasing ? '#000000' : $('color').value; const size = parseFloat($('size').value)||4;
+  if(!drawing) return;
+  const p = pointerXY(e);
+  if(isHost){
+    const edge = canvas.getBoundingClientRect().height - 150;
+    if(p.y > edge){
+      growCanvas(800);
+      board.scrollTop = board.scrollHeight;
+    }
+  }
+  const color = erasing ? '#000000' : $('color').value;
+  const size = parseFloat($('size').value)||4;
   drawLine(last.x,last.y,p.x,p.y,color,size, erasing?'erase':'draw');
   emitStroke({x0:last.x,y0:last.y,x1:p.x,y1:p.y,color,size,mode: erasing?'erase':'draw'});
   last = p; e.preventDefault();
 }
+
+function up(){ drawing=false; last=null; }
+
+function clearCanvas(){
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.restore();
+}
+
+canvas.addEventListener('pointerdown', down);
+canvas.addEventListener('pointermove', move);
+canvas.addEventListener('pointerup', up);
+canvas.addEventListener('pointerleave', up);
+canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
+
+const qrOverlay = document.getElementById('qrOverlay');
+const qrClose = document.getElementById('qrClose');
+const qrUrl = document.getElementById('qrUrl');
+const qrCodeText = document.getElementById('qrCodeText');
+const qrBtn = document.getElementById('qrBtn');
+let qrInstance = null;
+let shareUrl = '';
+let currentBg = $('bg').value || '#0b1220';
+
+function ensureQr(){
+  if(!qrInstance){
+    qrInstance = new QRCode(document.getElementById('qr'), { width:240, height:240, correctLevel: QRCode.CorrectLevel.M });
+  }
+  return qrInstance;
+}
+
+function showQr(){
+  if(!shareUrl){
+    alert('Activa el modo anfitrión para obtener un código y enlace de conexión.');
+    return;
+  }
+  ensureQr().makeCode(shareUrl);
+  qrUrl.textContent = shareUrl;
+  qrCodeText.textContent = $('myCode').textContent || '—';
+  qrOverlay.style.display = 'flex';
+}
+
+function hideQr(){ qrOverlay.style.display = 'none'; }
+
+qrBtn.addEventListener('click', showQr);
+qrClose.addEventListener('click', hideQr);
+qrOverlay.addEventListener('click', e=>{ if(e.target === qrOverlay) hideQr(); });
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') hideQr(); });
+
+function updateEraserLabel(){ $('eraser').textContent = erasing ? 'Borrador (on)' : 'Borrador'; }
+updateEraserLabel();
+
+$('eraser').onclick = ()=>{
+  erasing = !erasing;
+  updateEraserLabel();
+};
+
+function emitBg(color){
+  if(isHost){ broadcast({type:'bg', color}); }
+  else if(conn && conn.open){ conn.send({type:'bg', color}); }
+}
+
+function applyBackground(color, propagate=true){
+  currentBg = color;
+  canvas.style.background = color;
+  board.style.background = color;
+  $('bg').value = color;
+  if(propagate) emitBg(color);
+}
+
+applyBackground(currentBg, false);
+$('bg').addEventListener('input', e=>applyBackground(e.target.value));
+
+function canvasSnapshot(){
+  const off = document.createElement('canvas');
+  off.width = canvas.width;
+  off.height = canvas.height;
+  const offCtx = off.getContext('2d');
+  offCtx.fillStyle = currentBg;
+  offCtx.fillRect(0,0,off.width,off.height);
+  offCtx.drawImage(canvas,0,0);
+  return off.toDataURL('image/png');
+}
+
+function applySnapshot(dataUrl){
+  if(!dataUrl) return;
+  const img = new Image();
+  img.onload = ()=>{
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    ctx.restore();
+  };
+  img.src = dataUrl;
+}
+
+function sendStateTo(connection){
+  try{
+    connection.send({
+      type:'state',
+      h: cssHeight,
+      bg: currentBg,
+      image: canvasSnapshot()
+    });
+  }catch(e){}
+}
+
+function handleIncoming(msg, source){
+  if(!msg || typeof msg !== 'object') return;
+  switch(msg.type){
+    case 'stroke': {
+      const s = msg.s;
+      if(!s) break;
+      drawLine(s.x0,s.y0,s.x1,s.y1,s.color,s.size,s.mode);
+      if(isHost) broadcast(msg, source?.peer);
+      break;
+    }
+    case 'clear':
+      clearCanvas();
+      if(isHost) broadcast(msg, source?.peer);
+      break;
+    case 'grow':
+      if(typeof msg.h === 'number'){
+        cssHeight = Math.max(cssHeight, msg.h);
+        setCanvasCssHeight(cssHeight);
+        board.scrollTop = board.scrollHeight;
+      }
+      if(isHost) broadcast(msg, source?.peer);
+      break;
+    case 'bg':
+      if(typeof msg.color === 'string'){
+        applyBackground(msg.color, false);
+      }
+      if(isHost) broadcast(msg, source?.peer);
+      break;
+    case 'state':
+      if(!isHost){
+        if(msg.bg) applyBackground(msg.bg, false);
+        if(typeof msg.h === 'number'){
+          cssHeight = msg.h;
+          setCanvasCssHeight(cssHeight);
+          board.scrollTop = board.scrollHeight;
+        }
+        if(msg.image) applySnapshot(msg.image);
+      }
+      break;
+    case 'request-state':
+    case 'hello':
+      if(isHost && source) sendStateTo(source);
+      break;
+    default:
+      break;
+  }
+}
+
+function broadcast(payload, excludeId=null){
+  if(!isHost) return;
+  guests.forEach((g,id)=>{
+    if(excludeId && id === excludeId) return;
+    try{ g.open && g.send(payload); }catch(e){}
+  });
+}
+
+function emitClear(){
+  if(isHost){ broadcast({type:'clear'}); }
+  else if(conn && conn.open){ conn.send({type:'clear'}); }
+}
+
+$('clear').onclick = ()=>{ clearCanvas(); emitClear(); };
+
+function emitGrow(h){
+  if(isHost){ broadcast({type:'grow', h}); }
+  else if(conn && conn.open){ conn.send({type:'grow', h}); }
+}
+
+$('addSpace').onclick = ()=>{
+  cssHeight += 800;
+  setCanvasCssHeight(cssHeight);
+  board.scrollTop = board.scrollHeight;
+  emitGrow(cssHeight);
+};
+
+$('savePdf').onclick = ()=>{
+  if(!window.jspdf){
+    alert('No se ha podido cargar jsPDF.');
+    return;
+  }
+  const dataUrl = canvasSnapshot();
+  const { jsPDF } = window.jspdf;
+  const w = canvas.clientWidth || board.clientWidth;
+  const h = canvas.clientHeight || board.clientHeight;
+  const orientation = w >= h ? 'landscape' : 'portrait';
+  const pdf = new jsPDF({ orientation, unit:'px', format:[w, h] });
+  pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
+  pdf.save(`pizarra-${new Date().toISOString().slice(0,10)}.pdf`);
+};
+
+function cleanupPeer(){
+  if(peer){
+    try{ peer.destroy(); }catch(e){}
+  }
+  guests.forEach((c,id)=>{
+    try{ c.close(); }catch(e){}
+  });
+  guests.clear();
+  conn = null;
+  peer = null;
+  shareUrl = '';
+  $('myCode').style.display = 'none';
+}
+
+function buildShareUrl(code){
+  try{
+    const url = new URL(window.location.href);
+    url.searchParams.set('code', code);
+    return url.toString();
+  }catch(e){
+    return '';
+  }
+}
+
+function updateStatusForGuests(){
+  setStatus(`conectados: ${guests.size}`);
+}
+
+$('hostBtn').onclick = ()=>{
+  cleanupPeer();
+  const id = rndCode();
+  isHost = true;
+  peer = new Peer(id, peerConfig);
+  setStatus('creando sesión…');
+  peer.on('open', ()=>{
+    $('myCode').style.display='inline-block';
+    $('myCode').textContent=id;
+    shareUrl = buildShareUrl(id);
+    setStatus('esperando conexiones');
+  });
+  peer.on('connection', c=>{
+    guests.set(c.peer, c);
+    updateStatusForGuests();
+    c.on('close', ()=>{
+      guests.delete(c.peer);
+      updateStatusForGuests();
+    });
+    c.on('data', msg=> handleIncoming(msg, c));
+    sendStateTo(c);
+    try{ c.send({type:'hello'}); }catch(e){}
+  });
+  peer.on('disconnected', ()=> setStatus('desconectado'));
+  peer.on('error', e=>{
+    console.error(e);
+    setStatus('error de conexión');
+  });
+};
+
+$('joinBtn').onclick = ()=>{
+  const id = $('code').value.trim().toUpperCase();
+  if(!id){
+    alert('Introduce un código válido.');
+    return;
+  }
+  cleanupPeer();
+  isHost = false;
+  peer = new Peer(null, peerConfig);
+  setStatus('conectando…');
+  peer.on('open', ()=>{
+    conn = peer.connect(id, { reliable:true });
+    conn.on('open', ()=>{
+      setStatus('conectado');
+      try{ conn.send({type:'request-state'}); }catch(e){}
+    });
+    conn.on('data', msg=> handleIncoming(msg, conn));
+    conn.on('close', ()=>{
+      setStatus('cerrado');
+      conn = null;
+    });
+    conn.on('error', err=>{
+      console.error(err);
+      setStatus('error de conexión');
+    });
+  });
+  peer.on('error', e=>{
+    console.error(e);
+    setStatus('error de conexión');
+  });
+};
+
+function emitStroke(s){
+  if(isHost){ broadcast({type:'stroke', s}); }
+  else if(conn && conn.open){ conn.send({type:'stroke', s}); }
+}
+
+const codeParam = (()=>{ try{ return new URL(window.location.href).searchParams.get('code'); }catch(e){ return null; }})();
+if(codeParam){
+  $('code').value = codeParam.toUpperCase();
+}
+</script>
+</body>
+</html>
