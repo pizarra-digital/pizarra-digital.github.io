@@ -34,10 +34,10 @@
     header .btn { cursor:pointer; user-select:none; }
     header .btn[disabled] { opacity:.5; cursor:not-allowed; }
     #status { margin-left:auto; border:none; background:transparent; color:var(--muted); padding:0; display:flex; align-items:center; gap:.4rem; font-weight:500; }
-    #status::before{ content:''; width:.65rem; height:.65rem; border-radius:50%; background:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.35); transition:background .15s ease; }
+    #status::before{ content:''; width:.65rem; height:.65rem; border-radius:50%; background:#f97316; box-shadow:0 0 0 2px rgba(249,115,22,.35); transition:background .15s ease; }
     #status[data-state="connected"]{ color:#bbf7d0; }
     #status[data-state="connected"]::before{ background:#22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.3); }
-    #status[data-state="pending"]::before{ background:#ef4444; box-shadow:0 0 0 2px rgba(239,68,68,.35); }
+    #status[data-state="pending"]::before{ background:#facc15; box-shadow:0 0 0 2px rgba(250,204,21,.35); }
     #status[data-state="locked"]::before{ background:#fb923c; box-shadow:0 0 0 2px rgba(251,146,60,.35); }
     #status[data-state="error"]{ color:#fecaca; }
     #status[data-state="error"]::before{ background:#f87171; box-shadow:0 0 0 2px rgba(248,113,113,.35); }
@@ -581,7 +581,16 @@ function refreshUi(){
   if(!isHost){
     if(conn && conn.open){
       const locked = remoteLock;
-      setStatus(locked ? 'Bloqueado por anfitrión' : 'conectado', locked ? 'locked' : 'connected');
+      setStatus(locked ? 'Sin edición' : 'conectado', locked ? 'locked' : 'connected');
+    } else {
+      setStatus('sin conexión', 'disconnected');
+    }
+  } else {
+    const count = guests.size;
+    if(count > 0){
+      setStatus(`conectados: ${count}`, 'connected');
+    } else {
+      setStatus('esperando conexiones', 'pending');
     }
   }
   updateRoleUi();
@@ -1057,7 +1066,7 @@ function updateStatusForGuests(){
   if(count > 0){
     setStatus(`conectados: ${count}`, 'connected');
   } else {
-    setStatus('esperando conexiones', 'disconnected');
+    setStatus('esperando conexiones', 'pending');
   }
 }
 
@@ -1081,7 +1090,7 @@ function startHost(){
       myCodeEl.textContent=id;
     }
     shareUrl = buildShareUrl(id);
-    setStatus('esperando conexiones', 'disconnected');
+    setStatus('esperando conexiones', 'pending');
   });
   peer.on('connection', c=>{
     guests.set(c.peer, c);
