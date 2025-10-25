@@ -15,7 +15,7 @@
     }
     * { box-sizing: border-box; }
     body { margin:0; background: var(--bg); color: var(--txt); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
-    .wrap { display:grid; grid-template-rows: auto 1fr; height: 100dvh; }
+    .wrap { display:grid; grid-template-rows: auto 1fr auto; height: 100dvh; }
     header { display:flex; gap:.5rem; align-items:center; padding:.5rem; flex-wrap:wrap; background: linear-gradient(180deg, rgba(17,24,39,.95), rgba(17,24,39,.6)); backdrop-filter: blur(6px); position: sticky; top:0; z-index:10; }
     header .toolbar-controls { flex:1 1 auto; display:flex; flex-direction:column; gap:.5rem; }
     #menuToggle { border:1px solid var(--border); background:#0b1220; color:var(--txt); padding:.45rem .6rem; border-radius:.55rem; font-size:14px; line-height:1; }
@@ -119,6 +119,35 @@
     .copy-feedback{ font-size:.8rem; margin-top:.3rem; color:#bbf7d0; transition:opacity .2s ease; }
     .copy-feedback.hidden{ opacity:0; height:0; overflow:hidden; margin-top:0; }
     .copy-feedback.error{ color:#fecaca; }
+    .page-panel{ position:fixed; top:72px; right:16px; width:min(360px, 92vw); background:rgba(15,23,42,.97); border:1px solid rgba(59, 130, 246, .35); border-radius:18px; box-shadow:0 24px 48px rgba(2,6,23,.55); padding:.75rem; display:flex; flex-direction:column; gap:.5rem; z-index:40; transition:opacity .2s ease, transform .2s ease; backdrop-filter:blur(10px); }
+    .page-panel[hidden]{ display:none; }
+    .page-panel-head{ display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+    .page-panel-head strong{ font-size:14px; letter-spacing:.02em; }
+    .page-panel .page-tools{ display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+    .page-panel .page-tools .btn{ padding:.35rem .6rem; font-size:13px; }
+    .page-thumbnails{ display:grid; gap:.55rem; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); grid-auto-rows:minmax(82px, auto); overflow-y:auto; overflow-x:hidden; padding:.4rem .45rem; max-height:50vh; }
+    .page-thumb-wrap{ position:relative; display:flex; }
+    .page-thumb{ position:relative; width:100%; aspect-ratio:4 / 3; border:1px solid var(--border); border-radius:.55rem; background:#0f172a; cursor:pointer; display:block; overflow:hidden; transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+    .page-thumb[data-active="true"]{ border-color:#22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.25); transform:translateY(-2px); }
+    .page-thumb img{ position:absolute; inset:6px; width:calc(100% - 12px); height:calc(100% - 12px); object-fit:cover; border-radius:.45rem; pointer-events:none; }
+    .page-thumb::before{ content:''; position:absolute; inset:6px; border-radius:.45rem; background:rgba(15,23,42,.75); opacity:.35; pointer-events:none; transition:opacity .2s ease; }
+    .page-thumb[data-has-img="true"]::before{ opacity:0; }
+    .page-thumb-label{ position:absolute; left:10px; bottom:8px; font-size:11px; color:#e2e8f0; font-weight:600; text-shadow:0 1px 2px rgba(0,0,0,.75); pointer-events:none; }
+    .page-thumb-delete{ position:absolute; top:8px; right:8px; width:22px; height:22px; border-radius:50%; border:1px solid rgba(248,113,113,.6); background:rgba(185,28,28,.7); color:#fee2e2; font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+    .page-thumb-delete:hover,
+    .page-thumb-delete:focus-visible{ background:rgba(220,38,38,.78); }
+    .page-thumb-delete:focus-visible{ outline:2px solid rgba(248,113,113,.8); outline-offset:2px; }
+    .page-thumb-delete[disabled]{ opacity:.5; cursor:not-allowed; }
+    .page-thumbnails::-webkit-scrollbar{ width:6px; }
+    .page-thumbnails::-webkit-scrollbar-thumb{ background:rgba(148,163,184,.35); border-radius:999px; }
+    .page-empty-thumb{ position:absolute; inset:6px; border-radius:.45rem; background:linear-gradient(120deg, rgba(148,163,184,.2), rgba(100,116,139,.2)); display:flex; align-items:center; justify-content:center; color:#cbd5f5; font-size:11px; font-weight:600; }
+    @media (max-width: 720px){
+      .page-panel{ top:auto; bottom:16px; right:16px; width:min(320px, 92vw); }
+      .page-panel .page-tools{ justify-content:space-between; }
+      .page-panel .page-tools .btn{ flex:0 1 auto; }
+      .page-thumbnails{ gap:.35rem; }
+      .page-thumb{ width:68px; height:48px; }
+    }
 
     /* QR overlay */
     .qr-overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.65); z-index:50; }
@@ -147,6 +176,7 @@
           <button id="hostBtn" class="btn host-only" data-state="idle">🖥️ Compartir mi pizarra</button>
           <label id="codeWrapper">Código <input id="code" type="text" placeholder="ABC123" style="width:7rem;text-transform:uppercase"/></label>
           <button id="joinBtn" class="btn" data-state="idle">👥 Unirme a una pizarra</button>
+          <button id="pageToggle" class="btn host-only" type="button" aria-expanded="false" aria-controls="pagePanel" title="Mostrar páginas">🗂️ Páginas</button>
           <span id="myCode" class="pill chip host-only" title="Código de la sesión" style="display:none"></span>
           <button id="qrBtn" class="btn host-only" title="Mostrar QR de conexión">QR</button>
         </div>
@@ -170,6 +200,18 @@
       <canvas id="canvas" style="height: calc(100vh - 56px);"></canvas>
       <div id="eraserCursor" aria-hidden="true"></div>
     </div>
+  </div>
+  <div id="pagePanel" class="page-panel host-only" role="dialog" aria-modal="false" aria-label="Páginas de la pizarra" hidden>
+    <div class="page-panel-head">
+      <strong>Páginas</strong>
+      <button id="pageClose" class="btn" type="button" title="Ocultar panel">Cerrar</button>
+    </div>
+    <div class="page-tools">
+      <button id="pagePrev" class="btn" type="button" title="Página anterior">◀</button>
+      <button id="pageNext" class="btn" type="button" title="Página siguiente">▶</button>
+      <button id="pageAdd" class="btn" type="button" title="Añadir una página nueva">➕ Añadir</button>
+    </div>
+    <div id="pageThumbnails" class="page-thumbnails" role="listbox" aria-label="Miniaturas de páginas"></div>
   </div>
 
   <!-- QR modal -->
@@ -348,6 +390,13 @@ const qrClose = $('qrClose');
 const qrUrl = $('qrUrl');
 const qrCodeText = $('qrCodeText');
 const qrBtn = $('qrBtn');
+const pagePanelEl = $('pagePanel');
+const pageThumbnailsEl = $('pageThumbnails');
+const pageAddBtn = $('pageAdd');
+const pagePrevBtn = $('pagePrev');
+const pageNextBtn = $('pageNext');
+const pageToggleBtn = $('pageToggle');
+const pageCloseBtn = $('pageClose');
 const guestControls = [colorInput, sizeInput, eraserBtn, eraserSizeInput];
 const headerEl = document.querySelector('header');
 let canvasScale = 1;
@@ -368,6 +417,15 @@ let copyFeedbackTimeout = null;
 let qrInstance = null;
 let shareUrl = '';
 let currentBg = bgInput?.value || '#ffffff';
+const pages = [];
+let activePageId = null;
+let pageOrderCounter = 0;
+let pagePanelOpen = false;
+let pendingSnapshotFrame = null;
+
+if(pageToggleBtn && !pageToggleBtn.getAttribute('aria-label')){
+  pageToggleBtn.setAttribute('aria-label', 'Mostrar páginas');
+}
 
 const hostButtonConfig = {
   idle: { label:'🖥️ Compartir mi pizarra' },
@@ -418,6 +476,311 @@ function updateCodeInputVisibility(){
   const hide = isHost && (hostButtonState === 'pending' || hostButtonState === 'active');
   codeWrapper.classList.toggle('hidden', hide);
 }
+
+function setPagePanelOpen(open){
+  const desired = !!open;
+  if(pagePanelOpen === desired) return;
+  pagePanelOpen = desired;
+  if(pagePanelEl){
+    if(desired){
+      pagePanelEl.removeAttribute('hidden');
+      renderPageThumbnails();
+    } else {
+      pagePanelEl.setAttribute('hidden', '');
+    }
+  }
+  if(pageToggleBtn){
+    pageToggleBtn.setAttribute('aria-expanded', desired ? 'true' : 'false');
+    pageToggleBtn.setAttribute('aria-label', desired ? 'Ocultar páginas' : 'Mostrar páginas');
+  }
+}
+
+function generatePageId(){
+  if(typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'){
+    return crypto.randomUUID();
+  }
+  return `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function createPage({ id = generatePageId(), bg = currentBg, image = null, order = null } = {}){
+  pageOrderCounter = Math.max(pageOrderCounter, order ?? pageOrderCounter);
+  return {
+    id,
+    bg: typeof bg === 'string' ? bg : '#ffffff',
+    image: image ?? null,
+    order: order ?? (++pageOrderCounter)
+  };
+}
+
+function getActivePage(){
+  return pages.find(page=> page.id === activePageId) || null;
+}
+
+function findPageIndex(id){
+  return pages.findIndex(page=> page.id === id);
+}
+
+function updatePageNavButtons(){
+  if(!pagePrevBtn || !pageNextBtn) return;
+  const idx = findPageIndex(activePageId);
+  if(pages.length <= 1 || idx <= 0){
+    pagePrevBtn.setAttribute('disabled', 'true');
+  } else {
+    pagePrevBtn.removeAttribute('disabled');
+  }
+  if(pages.length <= 1 || idx === pages.length - 1){
+    pageNextBtn.setAttribute('disabled', 'true');
+  } else {
+    pageNextBtn.removeAttribute('disabled');
+  }
+}
+
+function renderPageThumbnails({ force=false } = {}){
+  if(!pageThumbnailsEl) return;
+  if(!pagePanelOpen && !force) return;
+  pageThumbnailsEl.innerHTML = '';
+  if(pages.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'page-empty-thumb';
+    empty.textContent = 'Sin páginas';
+    pageThumbnailsEl.appendChild(empty);
+    updatePageNavButtons();
+    return;
+  }
+  pages.forEach((page, idx)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'page-thumb-wrap';
+    wrap.dataset.pageId = page.id;
+    const thumbBtn = document.createElement('button');
+    thumbBtn.type = 'button';
+    thumbBtn.className = 'page-thumb';
+    thumbBtn.dataset.pageId = page.id;
+    const isActive = page.id === activePageId;
+    thumbBtn.dataset.active = isActive ? 'true' : 'false';
+    thumbBtn.dataset.hasImg = page.image ? 'true' : 'false';
+    if(page.image){
+      const img = document.createElement('img');
+      img.alt = `Miniatura página ${idx + 1}`;
+      img.src = page.image;
+      thumbBtn.appendChild(img);
+    } else {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'page-empty-thumb';
+      placeholder.textContent = 'Vacía';
+      thumbBtn.appendChild(placeholder);
+    }
+    const label = document.createElement('span');
+    label.className = 'page-thumb-label';
+    label.textContent = `Pág ${idx + 1}`;
+    thumbBtn.appendChild(label);
+    wrap.appendChild(thumbBtn);
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'page-thumb-delete';
+    delBtn.dataset.pageId = page.id;
+    delBtn.title = 'Eliminar página';
+    delBtn.innerHTML = '×';
+    if(pages.length <= 1){
+      delBtn.setAttribute('disabled', 'true');
+    }
+    wrap.appendChild(delBtn);
+    pageThumbnailsEl.appendChild(wrap);
+  });
+  updatePageNavButtons();
+}
+
+function blankPageDataUrl(bg='#ffffff'){
+  const off = document.createElement('canvas');
+  off.width = canvas?.width || 1280;
+  off.height = canvas?.height || 720;
+  const offCtx = off.getContext('2d');
+  offCtx.fillStyle = bg;
+  offCtx.fillRect(0,0,off.width,off.height);
+  return off.toDataURL('image/png');
+}
+
+function saveCurrentPageState(){
+  const page = getActivePage();
+  if(!page || !canvas) return;
+  syncCanvasResolution({preserve:true});
+  page.bg = currentBg;
+  page.image = canvasSnapshot();
+}
+
+function schedulePageSnapshot(){
+  if(!isHost) return;
+  if(pendingSnapshotFrame !== null) return;
+  pendingSnapshotFrame = requestAnimationFrame(()=>{
+    pendingSnapshotFrame = null;
+    saveCurrentPageState();
+    renderPageThumbnails();
+  });
+}
+
+function snapshotForPage(page){
+  if(!page) return null;
+  if(page.id === activePageId){
+    saveCurrentPageState();
+    return page.image;
+  }
+  if(page.image) return page.image;
+  return blankPageDataUrl(page.bg);
+}
+
+function serializePages({ refreshActive=false } = {}){
+  if(refreshActive) saveCurrentPageState();
+  return pages.map(page=>({
+    id: page.id,
+    bg: page.bg,
+    order: page.order,
+    image: page.image || null
+  }));
+}
+
+function applyPageToCanvas(page){
+  if(!page){
+    clearCanvas();
+    applyBackground('#ffffff', false);
+    return;
+  }
+  applyBackground(page.bg || '#ffffff', false);
+  if(page.image){
+    applySnapshot(page.image);
+  } else {
+    clearCanvas();
+  }
+}
+
+function setActivePage(id, { broadcast=true, fromSync=false } = {}){
+  if(!id) return;
+  if(activePageId === id && !fromSync){
+    if(isHost && broadcast) broadcastPages();
+    return;
+  }
+  if(isHost && !fromSync){
+    saveCurrentPageState();
+  }
+  const page = pages.find(p=> p.id === id);
+  if(!page) return;
+  activePageId = id;
+  applyPageToCanvas(page);
+  renderPageThumbnails({ force:true });
+  if(isHost && broadcast){
+    broadcastPages();
+    broadcastPageChange(activePageId);
+    syncViewportWithGuests();
+  }
+}
+
+function addNewPage({ bg, image } = {}){
+  const baseBg = typeof bg === 'string' ? bg : currentBg;
+  if(isHost) saveCurrentPageState();
+  const newPage = createPage({ bg: baseBg, image });
+  const currentIndex = findPageIndex(activePageId);
+  const insertAt = currentIndex >= 0 ? currentIndex + 1 : pages.length;
+  pages.splice(insertAt, 0, newPage);
+  setActivePage(newPage.id, { broadcast:false });
+  renderPageThumbnails();
+  if(isHost){
+    broadcastPages();
+    broadcastPageChange(activePageId);
+  }
+}
+
+function removePage(id){
+  if(pages.length <= 1) return;
+  const index = findPageIndex(id);
+  if(index === -1) return;
+  if(isHost && pages[index].id === activePageId){
+    saveCurrentPageState();
+  }
+  const wasActive = pages[index].id === activePageId;
+  pages.splice(index, 1);
+  if(!pages.length){
+    const fallback = createPage({ bg: currentBg });
+    pages.push(fallback);
+    activePageId = fallback.id;
+  } else if(wasActive){
+    const next = pages[index] ?? pages[index-1] ?? pages[0];
+    activePageId = next.id;
+  }
+  applyPageToCanvas(getActivePage());
+  renderPageThumbnails();
+  if(isHost){
+    broadcastPages();
+    broadcastPageChange(activePageId);
+  }
+}
+
+function stepPage(delta){
+  if(!pages.length) return;
+  const index = findPageIndex(activePageId);
+  if(index === -1) return;
+  const nextIndex = Math.min(pages.length - 1, Math.max(0, index + delta));
+  if(nextIndex === index) return;
+  setActivePage(pages[nextIndex].id);
+}
+
+function resetPages({ bg=currentBg, image=null, preserveCanvas=false } = {}){
+  pageOrderCounter = 0;
+  pages.length = 0;
+  const initial = createPage({ bg, image });
+  pages.push(initial);
+  activePageId = initial.id;
+  if(!preserveCanvas){
+    clearCanvas();
+    applyBackground(initial.bg, false);
+    if(initial.image){
+      applySnapshot(initial.image);
+    }
+  }
+  renderPageThumbnails();
+}
+
+function broadcastPages(){
+  if(!isHost) return;
+  const payload = {
+    type:'pages-sync',
+    pages: serializePages(),
+    active: activePageId
+  };
+  broadcast(payload);
+}
+
+function broadcastPageChange(id){
+  if(!isHost) return;
+  if(!id) return;
+  broadcast({ type:'page-change', id });
+}
+
+function syncPagesFromHost(list, activeId){
+  if(!Array.isArray(list) || list.length === 0){
+    pageOrderCounter = 0;
+    pages.length = 0;
+    const fallback = createPage({ bg: currentBg });
+    pages.push(fallback);
+    activePageId = fallback.id;
+    applyPageToCanvas(fallback);
+    renderPageThumbnails();
+    return;
+  }
+  pageOrderCounter = 0;
+  pages.length = 0;
+  list.forEach(item=>{
+    const page = createPage({
+      id: item.id || generatePageId(),
+      bg: item.bg || '#ffffff',
+      image: item.image || null,
+      order: item.order ?? null
+    });
+    pages.push(page);
+  });
+  activePageId = activeId && pages.find(p=> p.id === activeId) ? activeId : (pages[0]?.id ?? null);
+  applyPageToCanvas(getActivePage());
+  renderPageThumbnails();
+}
+
+resetPages({ bg: currentBg, preserveCanvas:true });
 
 applyHostButtonState(hostButtonState);
 applyJoinButtonState(joinButtonState);
@@ -610,6 +973,7 @@ function updateRoleUi(){
   if(roleLabel){
     roleLabel.textContent = isHost ? 'Modo (anfitrión):' : 'Modo (invitado):';
   }
+  if(!isHost) setPagePanelOpen(false);
   refreshSectionButtons();
   ensureActiveSectionVisible();
 }
@@ -841,6 +1205,7 @@ function up(e){
   if(e?.type === 'pointerleave'){
     hideEraserCursor();
   }
+  if(isHost) schedulePageSnapshot();
 }
 
 function handlePointerLeave(e){
@@ -862,6 +1227,7 @@ function clearCanvas(){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.restore();
+  if(isHost) schedulePageSnapshot();
 }
 
 canvas.addEventListener('pointerdown', down);
@@ -993,6 +1359,46 @@ qrUrl?.addEventListener('keydown', e=>{
   copyShareLink();
 });
 
+pageToggleBtn?.addEventListener('click', ()=>{
+  setPagePanelOpen(!pagePanelOpen);
+});
+
+pageCloseBtn?.addEventListener('click', ()=>{
+  setPagePanelOpen(false);
+});
+
+pageAddBtn?.addEventListener('click', ()=>{
+  addNewPage();
+});
+
+pagePrevBtn?.addEventListener('click', ()=>{
+  stepPage(-1);
+});
+
+pageNextBtn?.addEventListener('click', ()=>{
+  stepPage(1);
+});
+
+pageThumbnailsEl?.addEventListener('click', e=>{
+  const deleteBtn = e.target.closest('.page-thumb-delete');
+  if(deleteBtn){
+    const id = deleteBtn.dataset.pageId;
+    if(id) removePage(id);
+    return;
+  }
+  const thumb = e.target.closest('.page-thumb');
+  if(thumb){
+    const id = thumb.dataset.pageId;
+    if(id) setActivePage(id);
+  }
+});
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape' && pagePanelOpen){
+    setPagePanelOpen(false);
+  }
+});
+
 updateEraserLabel();
 
 eraserBtn?.addEventListener('click', ()=>{
@@ -1005,11 +1411,17 @@ function emitBg(color){
 }
 
 function applyBackground(color, propagate=true){
-  currentBg = color;
-  canvas.style.background = color;
-  board.style.background = color;
-  if(bgInput) bgInput.value = color;
-  if(propagate) emitBg(color);
+  const target = typeof color === 'string' ? color : currentBg;
+  currentBg = target;
+  canvas.style.background = target;
+  board.style.background = target;
+  if(bgInput) bgInput.value = target;
+  const activePage = getActivePage();
+  if(activePage){
+    activePage.bg = target;
+  }
+  if(propagate) emitBg(target);
+  if(isHost) schedulePageSnapshot();
 }
 
 applyBackground(currentBg, false);
@@ -1069,21 +1481,31 @@ function applySnapshot(dataUrl){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(img,0,0,canvas.width,canvas.height);
     ctx.restore();
+    if(isHost){
+      saveCurrentPageState();
+      if(pagePanelOpen) renderPageThumbnails({ force:true });
+    } else {
+      renderPageThumbnails({ force:true });
+    }
   };
   img.src = dataUrl;
 }
 
 function sendStateTo(connection){
   try{
+    const pagesPayload = serializePages({ refreshActive:true });
     const width = Math.round(canvas.clientWidth || board.clientWidth || window.innerWidth || 0);
     const height = typeof cssHeight === 'number' ? cssHeight : desiredCanvasHeight();
+    const activePage = getActivePage();
     connection.send({
       type:'state',
       h: height,
       w: width,
       bg: currentBg,
       lock: guestLock,
-      image: canvasSnapshot()
+      pages: pagesPayload,
+      activePage: activePageId,
+      image: activePage?.image || canvasSnapshot()
     });
   }catch(e){}
 }
@@ -1122,20 +1544,30 @@ function handleIncoming(msg, source){
       break;
     case 'state':
       if(!isHost){
-        if(msg.bg) applyBackground(msg.bg, false);
+        let shouldRefresh = false;
+        if(Array.isArray(msg.pages) && msg.pages.length){
+          syncPagesFromHost(msg.pages, msg.activePage || msg.active);
+          shouldRefresh = true;
+        } else {
+          if(msg.bg) applyBackground(msg.bg, false);
+          if(msg.image) applySnapshot(msg.image);
+          shouldRefresh = true;
+        }
         if(typeof msg.lock === 'boolean'){
           remoteLock = msg.lock;
-          refreshUi();
+          shouldRefresh = true;
         }
         if(Number.isFinite(msg.w)){
           cssWidth = msg.w;
           applyCanvasWidth();
+          shouldRefresh = true;
         }
         if(typeof msg.h === 'number'){
           cssHeight = msg.h;
           setCanvasCssHeight(cssHeight);
+          shouldRefresh = true;
         }
-        if(msg.image) applySnapshot(msg.image);
+        if(shouldRefresh) refreshUi();
       }
       break;
     case 'viewport':
@@ -1148,6 +1580,16 @@ function handleIncoming(msg, source){
           cssHeight = msg.h;
           setCanvasCssHeight(cssHeight);
         }
+      }
+      break;
+    case 'pages-sync':
+      if(!isHost){
+        syncPagesFromHost(Array.isArray(msg.pages) ? msg.pages : [], msg.active);
+      }
+      break;
+    case 'page-change':
+      if(!isHost && msg?.id){
+        setActivePage(msg.id, { broadcast:false, fromSync:true });
       }
       break;
     case 'request-state':
@@ -1182,13 +1624,27 @@ savePdfBtn?.addEventListener('click', ()=>{
     alert('No se ha podido cargar jsPDF.');
     return;
   }
-  const dataUrl = canvasSnapshot();
+  if(!pages.length){
+    alert('No hay páginas para exportar.');
+    return;
+  }
+  const snapshots = pages.map(page=> ({
+    id: page.id,
+    bg: page.bg,
+    data: snapshotForPage(page)
+  }));
   const { jsPDF } = window.jspdf;
-  const w = canvas.clientWidth || board.clientWidth;
-  const h = canvas.clientHeight || board.clientHeight;
+  const w = canvas.clientWidth || board.clientWidth || canvas.width || 1280;
+  const h = canvas.clientHeight || board.clientHeight || canvas.height || 720;
   const orientation = w >= h ? 'landscape' : 'portrait';
   const pdf = new jsPDF({ orientation, unit:'px', format:[w, h] });
-  pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
+  snapshots.forEach((snap, index)=>{
+    const dataUrl = snap.data || blankPageDataUrl(snap.bg);
+    if(index > 0){
+      pdf.addPage([w, h], orientation);
+    }
+    pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
+  });
   pdf.save(`pizarra-${new Date().toISOString().slice(0,10)}.pdf`);
 });
 
